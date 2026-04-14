@@ -56,7 +56,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   
   // Income state
-  const [incomes, setIncomes] = useState<Income[]>(() => {
+  const [incomes, setIncomes] = useState<any[]>(() => {
   const data = getTransactions();
   return data.filter(t => t.type === "income");
 });
@@ -70,11 +70,12 @@ export default function Dashboard({ onLogout }: DashboardProps) {
 >("mensual");
   const [isEditingIncome, setIsEditingIncome] = useState(true); // Start true if we want them to set it up
   const [tempIncome, setTempIncome] = useState("");
+  const [incomeError, setIncomeError] = useState("");
 const refreshData = () => {
   const data = getTransactions();
 
   setExpenses(data.filter(t => t.type === "expense"));
-  setIncomes(data.filter(t => t.type === "income"));
+  setIncomes(data.filter(t => t.type === "income") as any);
 };
   const totalExpenses = summary.expenses;
   const totalIncome = useMemo(() => {
@@ -105,6 +106,11 @@ const totalVariableExpenses = variableExpenses.reduce(
   (acc, exp) => acc + exp.amount,
   0
 );
+const realAvailable = totalIncome - totalFixedExpenses;
+
+const recommendedSavings = realAvailable > 0 ? realAvailable * 0.2 : 0;
+
+const safeToSpend = realAvailable > 0 ? realAvailable - recommendedSavings : 0;
 const monthlyProjection = useMemo(() => {
   if (totalIncome === 0) return null;
 
@@ -141,58 +147,39 @@ const monthlyProjection = useMemo(() => {
   }, [totalIncome, totalExpenses]);
 
   const alert = useMemo(() => {
-  if (income === 0) {
+  if (totalIncome === 0) {
     return {
       type: "info",
-      message: "Configura tu ingreso para ver alertas"
+      message: "Configura tu ingreso"
     };
   }
 
-  const fixedPercentage = (totalFixedExpenses / totalIncome) * 100;
-
-  // 🚨 ALERTAS CRÍTICAS
-  if (spentPercentage >= 100) {
+  if (balance < 0) {
     return {
       type: "danger",
-      message: "⚠️ Te pasaste del presupuesto"
+      message: "🚨 Estás en sobregiro"
     };
   }
 
-  if (fixedPercentage >= 70) {
+  if (totalFixedExpenses > totalIncome * 0.7) {
     return {
       type: "danger",
-      message: "🚨 Tus gastos fijos son muy altos"
+      message: "🚨 Tus gastos fijos superan el 70% de tu ingreso"
     };
   }
 
-  // ⚠️ ALERTAS MEDIAS
-  if (spentPercentage >= 80) {
+  if (realAvailable <= 0) {
     return {
       type: "warning",
-      message: "⚠️ Estás cerca del límite"
-    };
-  }
-
-  if (fixedPercentage >= 50) {
-    return {
-      type: "warning",
-      message: "⚠️ Tus gastos fijos están subiendo"
-    };
-  }
-
-  // 🟢 ESTADO NORMAL
-  if (spentPercentage >= 50) {
-    return {
-      type: "normal",
-      message: "Vas bien, pero controla tus gastos"
+      message: "⚠️ No tienes dinero disponible después de gastos fijos"
     };
   }
 
   return {
     type: "success",
-    message: "Buen trabajo, gastos bajo control"
+    message: `Puedes gastar $${safeToSpend.toLocaleString("es-ES")} y ahorrar $${recommendedSavings.toLocaleString("es-ES")}`
   };
-}, [spentPercentage, income, totalFixedExpenses]);
+}, [totalIncome, totalFixedExpenses, balance, realAvailable]);
 
   const categoryData = useMemo(() => {
     const data = CATEGORIES.map(cat => {
@@ -234,7 +221,15 @@ const monthlyProjection = useMemo(() => {
   const addExpense = (e: React.FormEvent) => {
     e.preventDefault();
     const parsedAmount = parseFloat(amount);
-    if (!description || !amount || parsedAmount <= 0) return;
+    if (!description || !amount || parsedAmount <= 0) {
+  alert("❌ Revisa los datos del gasto");
+  return;
+}
+    if (balance - parsedAmount < 0) {
+  const confirmacion = confirm("⚠️ Este gasto te dejará en sobregiro. ¿Deseas continuar?");
+  
+  if (!confirmacion) return;
+}
 
     const newExpense: Expense = {
   id: crypto.randomUUID(),
@@ -380,9 +375,19 @@ const exportToPDF = () => {
 };
 
   const handleSaveIncome = () => {
-  const val = Math.max(0, parseFloat(tempIncome) || 0);
+  const val = parseFloat(tempIncome);
 
-  if (val <= 0) return; // ❌ evita ingresos en 0
+setIncomeError("");
+
+if (!tempIncome || isNaN(val)) {
+  setIncomeError("⚠️ Ingresa un valor válido");
+  return;
+}
+
+if (val <= 0) {
+  setIncomeError("❌ El ingreso debe ser mayor a 0");
+  return;
+}
 
   const newIncome: Income = {
     id: crypto.randomUUID(),
@@ -476,6 +481,7 @@ const exportToPDF = () => {
                   <input 
                     type="number"
                     value={tempIncome}
+                    
                     onChange={(e) => setTempIncome(e.target.value)}
                     placeholder="0.00"
                     autoFocus
@@ -483,6 +489,11 @@ const exportToPDF = () => {
                     step="0.01"
                     className="w-full bg-white/5 border border-white/10 rounded-xl pl-8 pr-4 py-3 focus:ring-2 focus:ring-[#3b82f6] outline-none transition-all text-lg font-bold"
                   />
+                  {incomeError && (
+    <p className="text-red-400 text-xs mt-2">
+      {incomeError}
+    </p>
+  )}
                 </div>
                 <div className="flex gap-2 pt-2">
                   <button 
@@ -590,6 +601,11 @@ const exportToPDF = () => {
                 )}>
                   ${balance.toLocaleString("es-ES")}
                 </p>
+                <div className="mt-3 text-xs text-gray-400">
+  <p>Disponible real: ${realAvailable.toLocaleString("es-ES")}</p>
+  <p>Ahorro sugerido: ${recommendedSavings.toLocaleString("es-ES")}</p>
+  <p>Gasto seguro: ${safeToSpend.toLocaleString("es-ES")}</p>
+</div>
               </div>
             </div>
             <div className="space-y-2">
