@@ -90,7 +90,9 @@ const monthlyIncome = useMemo(() => {
   }, 0);
 }, [incomes]);
 
+
 const balance = totalIncome - summary.expenses;
+
   const fixedExpenses = expenses.filter(exp => exp.frequency === "monthly");
 
 const variableExpenses = expenses.filter(
@@ -102,11 +104,12 @@ const totalFixedExpenses = fixedExpenses.reduce(
   0
 );
 
+
 const totalVariableExpenses = variableExpenses.reduce(
   (acc, exp) => acc + exp.amount,
   0
 );
-const realAvailable = totalIncome - totalFixedExpenses;
+const realAvailable = monthlyIncome - totalFixedExpenses;
 
 const recommendedSavings = realAvailable > 0 ? realAvailable * 0.2 : 0;
 
@@ -153,7 +156,12 @@ const monthlyProjection = useMemo(() => {
       message: "Configura tu ingreso"
     };
   }
-
+if (safeToSpend <= 0) {
+  return {
+    type: "danger",
+    message: "🚨 Ya no deberías hacer más gastos variables este mes."
+  };
+}
   if (balance < 0) {
     return {
       type: "danger",
@@ -168,7 +176,7 @@ const monthlyProjection = useMemo(() => {
     };
   }
 
-  if (realAvailable <= 0) {
+  if (balance <= 0) {
     return {
       type: "warning",
       message: "⚠️ No tienes dinero disponible después de gastos fijos"
@@ -177,7 +185,7 @@ const monthlyProjection = useMemo(() => {
 
   return {
     type: "success",
-    message: `Puedes gastar $${safeToSpend.toLocaleString("es-ES")} y ahorrar $${recommendedSavings.toLocaleString("es-ES")}`
+    message: `Te queda disponible $${balance.toLocaleString("es-ES")} para gastar`
   };
 }, [totalIncome, totalFixedExpenses, balance, realAvailable]);
 
@@ -190,10 +198,95 @@ const monthlyProjection = useMemo(() => {
     }).filter(item => item.value > 0);
     return data;
   }, [expenses]);
+  const lastExpenses = expenses.slice(0, 7).reverse();
   const categoryAlert = useMemo(() => {
   if (income === 0) return null;
-  // encontrar categoría con más gasto
-  const topCategory = categoryData.reduce((max, cat) => {
+
+  // 🚨 CONTROL GLOBAL DEL PRESUPUESTO
+if (spentPercentage >= 95) {
+  return {
+    type: "danger",
+    message: "🔴 Estás al límite de tu presupuesto mensual. Evita cualquier gasto innecesario."
+  };
+}
+
+if (spentPercentage >= 80) {
+  return {
+    type: "warning",
+    message: "🟡 Ya usaste la mayor parte de tu presupuesto. Gasta con cuidado."
+  };
+}
+if (realAvailable <= 0) {
+  return {
+    type: "danger",
+    message: "🚨 Ya consumiste tu presupuesto del mes. Evita nuevos gastos."
+  };
+}
+const analyzed = categoryData.map(cat => {
+  const percentage = (cat.value / income) * 100;
+
+  const type =
+    cat.name === "Vivienda" ||
+    cat.name === "Servicios" ||
+    cat.name === "Educación"
+      ? "fixed"
+      : cat.name === "Alimentación" ||
+        cat.name === "Transporte" ||
+        cat.name === "Salud"
+      ? "necessary"
+      : "optional";
+
+  return { ...cat, percentage, type };
+});
+const risky = analyzed
+  .filter(cat => cat.percentage >= 25)
+  .sort((a, b) => {
+    const priority = {
+      optional: 3,
+      necessary: 2,
+      fixed: 1,
+    };
+
+    return priority[b.type] - priority[a.type];
+  });
+if (risky.length === 0) {
+  return {
+    type: "success",
+    message: "🟢 Semáforo verde: tus gastos están equilibrados."
+  };
+}
+const worst = risky[0];
+if (worst.type === "necessary") {
+  return {
+    type: "warning",
+    message: `🟡 ${worst.name} representa ${worst.percentage.toFixed(1)}% de tu ingreso. No es recortable, pero revísalo.`
+  };
+}
+if (worst.type === "optional") {
+  return {
+    type: "danger",
+    message: `🔴 ${worst.name} representa ${worst.percentage.toFixed(1)}% de tu ingreso. Este gasto sí es recortable.`
+  };
+}
+return {
+  type: "info",
+  message: `🔵 ${worst.name} es un gasto fijo. No se recomienda recortar aquí.`
+};
+  const fixedCategories = ["Vivienda"];
+
+  const variableExpenses = expenses.filter(
+    (e) => !fixedCategories.includes(e.category)
+  );
+
+  const variableCategoryData = CATEGORIES.map(cat => {
+    const total = variableExpenses
+      .filter(e => e.category === cat)
+      .reduce((sum, e) => sum + e.amount, 0);
+
+    return { name: cat, value: total };
+  }).filter(c => c.value > 0);
+
+  const topCategory = variableCategoryData.reduce((max, cat) => {
     return cat.value > (max?.value || 0) ? cat : max;
   }, null as { name: string; value: number } | null);
 
@@ -201,22 +294,28 @@ const monthlyProjection = useMemo(() => {
 
   const percentage = (topCategory.value / income) * 100;
 
+  const formatMoney = (val: number) =>
+    val.toLocaleString("es-ES");
+
   if (percentage >= 40) {
     return {
-      message: `⚠️ Estás gastando mucho en ${topCategory.name}`,
-      type: "warning"
+      type: "danger",
+      message: `🚨 ${topCategory.name}: ${formatMoney(topCategory.value)} este mes en gastos variables.`
     };
   }
 
   if (percentage >= 25) {
     return {
-      message: `Cuidado con ${topCategory.name}`,
-      type: "normal"
+      type: "warning",
+      message: `⚠️ ${topCategory.name}: ${percentage.toFixed(1)}% de tu ingreso en gastos variables.`
     };
   }
 
-  return null;
-}, [categoryData, income]);
+  return {
+    type: "success",
+    message: `Tu mayor gasto es ${topCategory.name} (${percentage.toFixed(1)}%) del ingreso.`
+  };
+}, [expenses, income]);
 
   const addExpense = (e: React.FormEvent) => {
     e.preventDefault();
@@ -573,7 +672,7 @@ if (val <= 0) {
             transition={{ delay: 0.1 }}
             className="bg-[#121212] border border-white/5 rounded-2xl p-6 shadow-xl space-y-6"
           >
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4 divide-y divide-white/5">
               <div>
                 <p className="text-gray-400 text-[10px] uppercase tracking-wider font-bold mb-1">Gastado</p>
                 <p className="text-xl font-bold text-white">${totalExpenses.toLocaleString("es-ES")}</p>
@@ -601,10 +700,25 @@ if (val <= 0) {
                 )}>
                   ${balance.toLocaleString("es-ES")}
                 </p>
-                <div className="mt-3 text-xs text-gray-400">
-  <p>Disponible real: ${realAvailable.toLocaleString("es-ES")}</p>
-  <p>Ahorro sugerido: ${recommendedSavings.toLocaleString("es-ES")}</p>
-  <p>Gasto seguro: ${safeToSpend.toLocaleString("es-ES")}</p>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+  
+  <div className="bg-white/5 rounded-lg p-2">
+    <p className="text-gray-400">Disponible</p>
+    <p className={cn(
+      "font-bold",
+      balance >= 0 ? "text-emerald-400" : "text-rose-500"
+    )}>
+      ${balance.toLocaleString("es-ES")}
+    </p>
+  </div>
+
+  <div className="bg-white/5 rounded-lg p-2">
+    <p className="text-gray-400">Ahorro Opcional(20%) </p>
+    <p className="text-blue-400 font-bold">
+      ${(balance > 0 ? balance * 0.2 : 0).toLocaleString("es-ES")}
+    </p>
+  </div>
+
 </div>
               </div>
             </div>
@@ -619,7 +733,7 @@ if (val <= 0) {
               </div>
               <div
   className={cn(
-    "p-3 rounded-xl text-sm font-semibold",
+    "p-4 rounded-xl text-sm font-medium leading-snug border border-white/10 shadow-lg shadow-black/20",
     alert.type === "danger" && "bg-rose-500/10 text-rose-400",
     alert.type === "warning" && "bg-amber-500/10 text-amber-400",
     alert.type === "success" && "bg-emerald-500/10 text-emerald-400",
@@ -677,7 +791,7 @@ if (val <= 0) {
                   className="w-full bg-[#1a1a1a] border border-white/10 rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#3b82f6] outline-none transition-all"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4 space-y-4 items-start">
                 <div className="space-y-1">
                   <label className="text-xs text-gray-400 uppercase font-bold">Monto</label>
                   <input 
@@ -748,25 +862,34 @@ if (val <= 0) {
                 <PieChartIcon className="w-4 h-4" /> Distribución
               </h3>
               <ResponsiveContainer width="100%" height="85%">
-                <PieChart>
-                  <Pie
-                    data={categoryData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {categoryData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: "#1a1a1a", border: "none", borderRadius: "8px" }}
-                    itemStyle={{ color: "#fff" }}
-                  />
-                </PieChart>
+                <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+  <Pie
+    data={categoryData}
+    cx="50%"
+    cy="50%"
+    innerRadius={50}
+    outerRadius={90}
+    paddingAngle={3}
+    dataKey="value"
+  >
+    {categoryData.map((entry, index) => (
+      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+    ))}
+  </Pie>
+
+  <Tooltip
+    formatter={(value: number, name: string) => [
+      `$${value.toLocaleString("es-ES")}`,
+      name
+    ]}
+    contentStyle={{
+      backgroundColor: "#0f172a",
+      border: "1px solid #1e293b",
+      borderRadius: "10px"
+    }}
+    itemStyle={{ color: "#fff" }}
+  />
+</PieChart>
               </ResponsiveContainer>
             </motion.div>
 
@@ -780,15 +903,70 @@ if (val <= 0) {
                 <TrendingUp className="w-4 h-4" /> Historial
               </h3>
               <ResponsiveContainer width="100%" height="85%">
-                <BarChart data={expenses.slice(0, 7).reverse()}>
+                <div className="text-center mt-2 text-xs text-gray-400">
+  {categoryData.length > 0 && (
+  <p className="text-sm text-gray-400 whitespace-nowrap overflow-hidden text-ellipsis">
+    Mayor gasto:{" "}
+    <span className="text-white font-bold">
+      {
+        categoryData.reduce((max, cat) =>
+          cat.value > max.value ? cat : max
+        ).name
+      }
+    </span>
+  </p>
+)}
+</div>
+                <BarChart
+  data={lastExpenses}
+  margin={{ top: 10, right: 20, left: 0, bottom: 5 }}
+>
                   <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
-                  <XAxis dataKey="date" hide />
-                  <YAxis hide />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: "#1a1a1a", border: "none", borderRadius: "8px" }}
-                    itemStyle={{ color: "#fff" }}
-                  />
-                  <Bar dataKey="amount" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                  <XAxis
+  dataKey="date"
+  tickFormatter={(date) =>
+    format(new Date(date), "dd MMM", { locale: es })
+  }
+  stroke="#888"
+/>
+                  <YAxis 
+  tickFormatter={(value) => `$${value / 1000}k`}
+  stroke="#888"
+/>
+                  <Tooltip
+  formatter={(value: number) =>
+    `$${value.toLocaleString("es-ES")}`
+  }
+  labelFormatter={(label) =>
+    format(new Date(label), "dd MMM yyyy", { locale: es })
+  }
+  contentStyle={{
+    backgroundColor: "#0f172a",
+    border: "1px solid #1e293b",
+    borderRadius: "10px"
+  }}
+  itemStyle={{ color: "#fff" }}
+/>
+                  <Bar
+  dataKey="amount"
+  radius={[6, 6, 0, 0]}
+  barSize={25}
+>
+  {lastExpenses.map((entry, index) => (
+    <Cell
+      key={`cell-${index}`}
+      fill={
+        entry.category === "Entretenimiento"
+          ? "#ef4444"
+          : entry.category === "Alimentación"
+          ? "#f59e0b"
+          : entry.category === "Vivienda"
+          ? "#8b5cf6"
+          : "#3b82f6"
+      }
+    />
+  ))}
+</Bar>
                 </BarChart>
               </ResponsiveContainer>
             </motion.div>
