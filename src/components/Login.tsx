@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { motion } from "motion/react";
 import { DollarSign } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 
 interface LoginProps {
   onLogin: () => void;
@@ -14,6 +15,7 @@ export default function Login({ onLogin }: LoginProps) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -138,21 +140,28 @@ export default function Login({ onLogin }: LoginProps) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Correo electrónico"
-              className="w-full bg-white border-none rounded-xl px-5 py-4 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-400 transition-all text-sm shadow-inner"
-              required
+              placeholder="Ingresa tu correo"
+  className="w-full bg-[#1a1a1a] text-white border border-white/10 rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#3b82f6] outline-none transition-all placeholder:text-gray-500"
             />
           </div>
 
-          <div className="space-y-1">
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Contraseña"
-              className="w-full bg-white border-none rounded-xl px-5 py-4 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-400 transition-all text-sm shadow-inner"
-              required
-            />
-          </div>
+          <div className="relative">
+  <input
+    type={showPassword ? "text" : "password"}
+    value={password}
+    onChange={(e) => setPassword(e.target.value)}
+    className="w-full bg-[#1a1a1a] text-white border border-white/10 rounded-xl px-4 py-3 pr-12 focus:ring-2 focus:ring-[#3b82f6] outline-none transition-all placeholder:text-gray-500"
+    placeholder="Ingresa tu contraseña"
+  />
+
+  <button
+    type="button"
+    onClick={() => setShowPassword(!showPassword)}
+    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+  >
+    {showPassword ? "🙈" : "👁️"}
+  </button>
+</div>
 
           {isRegistering && (
             <div className="space-y-1">
