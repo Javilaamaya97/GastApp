@@ -1,59 +1,58 @@
-// src/services/financeService.ts
+import { supabase } from "../lib/supabaseClient";
 
-export type Transaction = {
-  id: string;
-  type: "income" | "expense";
-  amount: number;
-  date: string;
-  description?: string;
+export const getTransactions = async () => {
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("*")
+    .order("date", { ascending: true });
 
-  frequency?: "once" | "monthly"; // 👈 AÑADIR
+  if (error) {
+    console.error(error);
+    return [];
+  }
+
+  return data;
 };
 
-const STORAGE_KEY = "finance_data";
+export const addTransaction = async (transaction: any) => {
+  const { error } = await supabase
+    .from("transactions")
+    .insert([transaction]);
 
-// Obtener datos
-export const getTransactions = (): Transaction[] => {
-  const data = localStorage.getItem(STORAGE_KEY);
-  return data ? JSON.parse(data) : [];
+  if (error) {
+    console.error(error);
+  }
 };
 
-// Guardar datos
-export const saveTransactions = (transactions: Transaction[]) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
+export const deleteTransaction = async (id: string) => {
+  const { error } = await supabase
+    .from("transactions")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    console.error(error);
+  }
 };
 
-// Agregar transacción
-export const addTransaction = (transaction: Transaction) => {
-  const current = getTransactions();
-  saveTransactions([...current, transaction]);
-};
+export const getSummary = async () => {
+  const { data } = await supabase
+    .from("transactions")
+    .select("*");
 
-// Eliminar transacción ✅ (AQUÍ VA)
-export const deleteTransaction = (id: string) => {
-  const current = getTransactions();
-  const updated = current.filter(t => t.id !== id);
-  saveTransactions(updated);
-};
+  if (!data) return { income: 0, expenses: 0, balance: 0 };
 
-// Calcular totales
-export const getSummary = () => {
-  const data = getTransactions();
+  const income = data
+    .filter(t => t.type === "income")
+    .reduce((acc, t) => acc + t.amount, 0);
 
-  let income = 0;
-  let expenses = 0;
-
-  data.forEach((t) => {
-    if (t.type === "income") {
-      income += t.amount;
-    } else {
-      expenses += t.amount;
-    }
-  });
+  const expenses = data
+    .filter(t => t.type === "expense")
+    .reduce((acc, t) => acc + t.amount, 0);
 
   return {
     income,
     expenses,
-    balance: income - expenses,
+    balance: income - expenses
   };
 };

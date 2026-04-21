@@ -36,6 +36,7 @@ import autoTable from "jspdf-autotable";
 import { saveAs } from "file-saver";
 import html2canvas from "html2canvas";
 import { Income } from "../types";
+import { useEffect } from "react";
 
 interface DashboardProps {
   onLogout: () => void;
@@ -44,11 +45,22 @@ interface DashboardProps {
 const COLORS = ["#3b82f6", "#8b5cf6", "#d946ef", "#f43f5e", "#10b981", "#f59e0b"];
 
 export default function Dashboard({ onLogout }: DashboardProps) {
-  const summary = getSummary();
-  const [expenses, setExpenses] = useState<Expense[]>(() => {
-  const data = getTransactions();
-  return data.filter(t => t.type === "expense") as Expense[];
+  const [summary, setSummary] = useState({
+  income: 0,
+  expenses: 0,
+  balance: 0,
 });
+const translateFrequency = (freq: string) => {
+  switch (freq) {
+    case "mensual": return "Mensual";
+    case "semanal": return "Semanal";
+    case "diario": return "Diario";
+    case "quincenal": return "Quincenal";
+    case "extra": return "Extra";
+    default: return freq;
+  }
+};
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState<Category>("Otros");
@@ -56,37 +68,59 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   
   // Income state
-  const [incomes, setIncomes] = useState<any[]>(() => {
-  const data = getTransactions();
-  return data.filter(t => t.type === "income");
-});
-  const [income, setIncome] = useState<number>(() => {
-  const data = getTransactions();
-  const incomes = data.filter(t => t.type === "income");
-  return incomes.length > 0 ? incomes[incomes.length - 1].amount : 0;
-});
+  const [incomes, setIncomes] = useState<any[]>([]);
+  const income = useMemo(() =>
+  incomes.reduce((acc, i) => acc + i.amount, 0),
+[incomes]);
+
   const [incomeFrequency, setIncomeFrequency] = useState<
   "diario" | "semanal" | "quincenal" | "mensual" | "extra"
 >("mensual");
   const [isEditingIncome, setIsEditingIncome] = useState(true); // Start true if we want them to set it up
   const [tempIncome, setTempIncome] = useState("");
   const [incomeError, setIncomeError] = useState("");
-const refreshData = () => {
-  const data = getTransactions();
+const refreshData = async () => {
+  const data = await getTransactions();
 
   setExpenses(data.filter(t => t.type === "expense"));
-  setIncomes(data.filter(t => t.type === "income") as any);
+  setIncomes(data.filter(t => t.type === "income"));
+
+  const summaryData = await getSummary();
+  setSummary(summaryData);
 };
+useEffect(() => {
+  const loadData = async () => {
+    const data = await getTransactions();
+
+    setExpenses(data.filter(t => t.type === "expense"));
+    setIncomes(data.filter(t => t.type === "income"));
+
+    const summaryData = await getSummary();
+    setSummary(summaryData);
+  };
+
+  loadData();
+}, []);
   const totalExpenses = summary.expenses;
   const totalIncome = useMemo(() => {
   return incomes.reduce((acc, inc) => acc + (inc.amount || 0), 0);
 }, [incomes]);
 const monthlyIncome = useMemo(() => {
   return incomes.reduce((acc, inc) => {
-    if (inc.frequency === "monthly") return acc + inc.amount;
-    if (inc.frequency === "biweekly") return acc + inc.amount * 2;
-    if (inc.frequency === "weekly") return acc + inc.amount * 4;
-    return acc + inc.amount; // once
+    switch (inc.frequency) {
+      case "mensual":
+        return acc + inc.amount;
+      case "quincenal":
+        return acc + inc.amount * 2;
+      case "semanal":
+        return acc + inc.amount * 4;
+      case "diario":
+        return acc + inc.amount * 30;
+      case "extra":
+        return acc + inc.amount;
+      default:
+        return acc + inc.amount;
+    }
   }, 0);
 }, [incomes]);
 
@@ -136,7 +170,7 @@ const monthlyProjection = useMemo(() => {
 
   const projectedTotal = totalFixedExpenses + projectedVariable;
 
-  const remaining = income - projectedTotal;
+  const remaining = monthlyIncome - projectedTotal;
 
   return {
     projectedTotal,
@@ -317,44 +351,44 @@ return {
   };
 }, [expenses, income]);
 
-  const addExpense = (e: React.FormEvent) => {
-    e.preventDefault();
-    const parsedAmount = parseFloat(amount);
-    if (!description || !amount || parsedAmount <= 0) {
-  alert("❌ Revisa los datos del gasto");
-  return;
-}
-    if (balance - parsedAmount < 0) {
-  const confirmacion = confirm("⚠️ Este gasto te dejará en sobregiro. ¿Deseas continuar?");
-  
-  if (!confirmacion) return;
-}
+  const addExpense = async (e: React.FormEvent) => {
+  e.preventDefault();
 
-    const newExpense: Expense = {
-  id: crypto.randomUUID(),
-  description,
-  amount: parsedAmount,
-  category,
-  date: new Date(date + "T12:00:00").toISOString(), // 👈 FIX FECHA
-  frequency,
-};
-   addTransaction({
-  id: newExpense.id,
+  const parsedAmount = parseFloat(amount);
+
+  if (!description || !amount || parsedAmount <= 0) {
+    alert("❌ Revisa los datos del gasto");
+    return;
+  }
+
+  const newExpense = {
+    description,
+    amount: parsedAmount,
+    category,
+    date: new Date(date + "T12:00:00").toISOString(),
+    frequency,
+  };
+
+  console.log("🚀 ENVIANDO A SUPABASE:", newExpense);
+
+  await addTransaction({
   type: "expense",
   amount: newExpense.amount,
   date: newExpense.date,
   description: newExpense.description,
-  frequency: frequency
+  frequency: frequency,
+  category: category   // 👈 ESTA ES LA CLAVE
 });
 
-    setExpenses([newExpense, ...expenses]);
-    setDescription("");
-    setAmount("");
-  };
+  await refreshData();
 
-  const deleteExpense = (id: string) => {
-  deleteTransaction(id);
-  refreshData();
+  setDescription("");
+  setAmount("");
+};
+
+  const deleteExpense = async (id: string) => {
+  await deleteTransaction(id);
+  await refreshData();
 };
 const deleteIncome = (id: string) => {
   deleteTransaction(id);
@@ -473,34 +507,32 @@ const exportToPDF = () => {
 
 };
 
-  const handleSaveIncome = () => {
+  const handleSaveIncome = async () => {
   const val = parseFloat(tempIncome);
 
-setIncomeError("");
+  setIncomeError("");
 
-if (!tempIncome || isNaN(val)) {
-  setIncomeError("⚠️ Ingresa un valor válido");
-  return;
-}
+  if (!tempIncome || isNaN(val)) {
+    setIncomeError("⚠️ Ingresa un valor válido");
+    return;
+  }
 
-if (val <= 0) {
-  setIncomeError("❌ El ingreso debe ser mayor a 0");
-  return;
-}
+  if (val <= 0) {
+    setIncomeError("❌ El ingreso debe ser mayor a 0");
+    return;
+  }
 
-  const newIncome: Income = {
+  const newIncome: Transaction = {
     id: crypto.randomUUID(),
     type: "income",
     amount: val,
     date: new Date().toISOString(),
     description: `Ingreso ${incomeFrequency}`,
-    frequency: incomeFrequency.toLowerCase() as any
+    frequency: incomeFrequency as any
   };
 
-  addTransaction(newIncome);
-
-  const data = getTransactions();
-  setIncomes(data.filter(t => t.type === "income"));
+  await addTransaction(newIncome);
+  await refreshData();
 
   setIncome(val);
   setIsEditingIncome(false);
@@ -645,13 +677,12 @@ if (val <= 0) {
               ${inc.amount.toLocaleString("es-ES")}
             </p>
             <p className="text-xs text-gray-400">
-              {inc.description} • {inc.type}
-            </p>
+  Ingreso {translateFrequency(inc.frequency)}
+</p>
             
           </div>
 
           <div className="text-xs text-gray-400">
-            {inc.frequency}
             <button
   onClick={() => deleteIncome(inc.id)}
   className="text-red-400 text-xs hover:underline mt-1"
