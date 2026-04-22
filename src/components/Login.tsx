@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { motion } from "motion/react";
 import { DollarSign } from "lucide-react";
+import { signIn, signUp } from "../services/authService";
 
 interface LoginProps {
   onLogin: () => void;
@@ -8,7 +9,7 @@ interface LoginProps {
 
 export default function Login({ onLogin }: LoginProps) {
   const [isRegistering, setIsRegistering] = useState(false);
-  const [fullName, setFullName] = useState("");
+  const [fullName, setFullName] = useState(""); // opcional (no se guarda aún)
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -16,73 +17,52 @@ export default function Login({ onLogin }: LoginProps) {
   const [success, setSuccess] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setSuccess("");
 
     const emailNormalizado = email.toLowerCase();
 
-    if (isRegistering) {
-      if (!fullName || !email || !password || !confirmPassword) {
-        setError("Por favor completa todos los campos.");
-        return;
-      }
+    try {
+      if (isRegistering) {
+        // VALIDACIONES
+        if (!fullName || !email || !password || !confirmPassword) {
+          setError("Por favor completa todos los campos.");
+          return;
+        }
 
-      if (password !== confirmPassword) {
-        setError("Las contraseñas no coinciden.");
-        return;
-      }
+        if (password !== confirmPassword) {
+          setError("Las contraseñas no coinciden.");
+          return;
+        }
 
-      const storedUsers = JSON.parse(
-        localStorage.getItem("gastapp_users") || "[]"
-      );
+        // 🔥 REGISTRO EN SUPABASE
+        await signUp(emailNormalizado, password);
 
-      if (
-        storedUsers.find(
-          (u: any) => u.email.toLowerCase() === emailNormalizado
-        )
-      ) {
-        setError("Este correo electrónico ya está registrado.");
-        return;
-      }
+        setSuccess("¡Cuenta creada! Ahora inicia sesión.");
 
-      const newUser = {
-        fullName,
-        email: emailNormalizado,
-        password,
-      };
-
-      storedUsers.push(newUser);
-      localStorage.setItem("gastapp_users", JSON.stringify(storedUsers));
-
-      setSuccess("¡Cuenta creada con éxito! Ya puedes iniciar sesión.");
-
-      setTimeout(() => {
-        setIsRegistering(false);
-        setSuccess("");
-        setPassword("");
-        setConfirmPassword("");
-      }, 2000);
-    } else {
-      const storedUsers = JSON.parse(
-        localStorage.getItem("gastapp_users") || "[]"
-      );
-
-      const user = storedUsers.find(
-        (u: any) =>
-          u.email.toLowerCase() === emailNormalizado &&
-          u.password === password
-      );
-
-      const isDefaultUser =
-        emailNormalizado === "juan@gmail.com" && password === "12345";
-
-      if (user || isDefaultUser) {
-        onLogin();
+        setTimeout(() => {
+          setIsRegistering(false);
+          setSuccess("");
+          setPassword("");
+          setConfirmPassword("");
+        }, 2000);
       } else {
-        setError("Credenciales incorrectas. Verifica tu correo y contraseña.");
-        setTimeout(() => setError(""), 3000);
+        // 🔥 LOGIN EN SUPABASE
+        await signIn(emailNormalizado, password);
+
+        onLogin(); // 🔥 ENTRA AL DASHBOARD
+      }
+    } catch (err: any) {
+      console.error("ERROR AUTH:", err);
+
+      if (err.message?.includes("Invalid login credentials")) {
+        setError("Credenciales incorrectas");
+      } else if (err.message?.includes("User already registered")) {
+        setError("Este correo ya está registrado");
+      } else {
+        setError("Error en autenticación");
       }
     }
   };
@@ -205,4 +185,3 @@ export default function Login({ onLogin }: LoginProps) {
     </div>
   );
 }
-

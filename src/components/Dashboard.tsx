@@ -37,6 +37,7 @@ import { saveAs } from "file-saver";
 import html2canvas from "html2canvas";
 import { Income } from "../types";
 import { useEffect } from "react";
+import { supabase } from "../lib/supabaseClient";
 
 interface DashboardProps {
   onLogout: () => void;
@@ -45,6 +46,8 @@ interface DashboardProps {
 const COLORS = ["#3b82f6", "#8b5cf6", "#d946ef", "#f43f5e", "#10b981", "#f59e0b"];
 
 export default function Dashboard({ onLogout }: DashboardProps) {
+
+  const [user, setUser] = useState<any>(null);
   const [summary, setSummary] = useState({
   income: 0,
   expenses: 0,
@@ -90,6 +93,11 @@ const refreshData = async () => {
 };
 useEffect(() => {
   const loadData = async () => {
+    // 🔐 Obtener usuario logueado
+    const { data: userData } = await supabase.auth.getUser();
+    setUser(userData.user);
+
+    // 📊 Traer transacciones
     const data = await getTransactions();
 
     setExpenses(data.filter(t => t.type === "expense"));
@@ -372,12 +380,13 @@ return {
   console.log("🚀 ENVIANDO A SUPABASE:", newExpense);
 
   await addTransaction({
+  user_id: user.id, // 👈 ESTE ES EL CAMBIO IMPORTANTE
   type: "expense",
   amount: newExpense.amount,
   date: newExpense.date,
   description: newExpense.description,
   frequency: frequency,
-  category: category   // 👈 ESTA ES LA CLAVE
+  category: category
 });
 
   await refreshData();
@@ -531,7 +540,10 @@ const exportToPDF = () => {
     frequency: incomeFrequency as any
   };
 
-  await addTransaction(newIncome);
+  await addTransaction({
+  ...newIncome,
+  user_id: user.id
+});
   await refreshData();
 
   setIncome(val);
