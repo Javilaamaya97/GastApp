@@ -81,6 +81,7 @@ const translateFrequency = (freq: string) => {
   const [incomeFrequency, setIncomeFrequency] = useState<
   "diario" | "semanal" | "quincenal" | "mensual" | "extra"
 >("mensual");
+const [paymentDay, setPaymentDay] = useState(1);
   const [isEditingIncome, setIsEditingIncome] = useState(true); // Start true if we want them to set it up
   const [tempIncome, setTempIncome] = useState("");
   const [incomeError, setIncomeError] = useState("");
@@ -533,18 +534,20 @@ const exportToPDF = () => {
     return;
   }
 
-  const newIncome: Transaction = {
-    id: crypto.randomUUID(),
-    type: "income",
-    amount: val,
-    date: new Date().toISOString(),
-    description: `Ingreso ${incomeFrequency}`,
-    frequency: incomeFrequency as any
-  };
+  const newIncome = {
+  id: crypto.randomUUID(),
+  type: "income",
+  amount: val,
+  date: new Date().toISOString(),
+  description: `Ingreso ${incomeFrequency}`,
+  frequency: incomeFrequency,
+  payment_day: paymentDay // 🔥 NUEVO
+};
 
   await addTransaction({
   ...newIncome,
-  user_id: user.id
+  user_id: user.id,
+  payment_day: paymentDay
 });
   await refreshData();
 
@@ -598,8 +601,6 @@ const exportToPDF = () => {
     : "bg-white border-gray-200"
 }`}
           >
-            <div className="absolute top-0 right-0 w-32 h-32 bg-[#3b82f6]/10 blur-3xl -mr-16 -mt-16 rounded-full" />
-            
             <div className="flex items-center justify-between mb-4">
               <p className="text-gray-400 text-xs uppercase tracking-wider font-bold">
                 {income === 0 ? "Configura tu Ingreso" : "Configuración de Ingreso"}
@@ -626,7 +627,9 @@ const exportToPDF = () => {
                       onClick={() => setIncomeFrequency(freq)}
                       className={cn(
                         "py-2 rounded-lg text-[10px] font-bold transition-all",
-                        incomeFrequency === freq ? "bg-[#3b82f6] text-white" : "bg-white/5 text-gray-400"
+                        incomeFrequency === freq ? "bg-[#3b82f6] text-white" : theme === "dark"
+  ? "bg-white/5 text-gray-400"
+  : "bg-gray-200 text-gray-700"
                       )}
                     >
                       {freq === "extra"
@@ -636,18 +639,50 @@ const exportToPDF = () => {
                   ))}
                 </div>
                 <div className="relative group">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold group-focus-within:text-[#3b82f6] transition-colors">$</span>
-                  <input 
-                    type="number"
-                    value={tempIncome}
-                    
-                    onChange={(e) => setTempIncome(e.target.value)}
-                    placeholder="0.00"
-                    autoFocus
-                    min="0"
-                    step="0.01"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl pl-8 pr-4 py-3 focus:ring-2 focus:ring-[#3b82f6] outline-none transition-all text-lg font-bold"
-                  />
+                  <div className="space-y-3">
+  {/* MONTO */}
+  <div className="relative group">
+    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">
+      $
+    </span>
+
+    <input 
+      type="number"
+      value={tempIncome}
+      onChange={(e) => setTempIncome(e.target.value)}
+      placeholder="0.00"
+      min="0"
+      step="0.01"
+      className={`w-full rounded-xl pl-8 pr-4 py-3 text-lg font-bold outline-none transition-colors ${
+  theme === "dark"
+    ? "bg-white/5 border border-white/10 text-white"
+    : "bg-gray-100 border border-gray-300 text-black"
+}`}
+    />
+  </div>
+
+  {/* DÍA DE PAGO */}
+  <div>
+    <label className="text-xs text-gray-400 font-bold">
+      Día en que recibes el ingreso
+    </label>
+
+    <input
+      type="number"
+      min="1"
+      max="31"
+      value={paymentDay}
+      onChange={(e) => setPaymentDay(Number(e.target.value))}
+      className={`w-full mt-1 rounded-xl px-4 py-2 text-sm outline-none transition-colors ${
+  theme === "dark"
+    ? "bg-white/5 border border-white/10 text-white"
+    : "bg-gray-100 border border-gray-300 text-black"
+}`}
+    />
+  </div>
+
+  {/* ERROR */}
+  </div>
                   {incomeError && (
     <p className="text-red-400 text-xs mt-2">
       {incomeError}
@@ -685,13 +720,7 @@ const exportToPDF = () => {
               </div>
             )}
           </motion.div>
-          <div className={`border rounded-2xl p-6 shadow-xl transition-colors ${
-  theme === "dark"
-    ? "bg-[#121212] border-white/5"
-    : "bg-white border-gray-200"
-}`}>
-
-</div>
+          
 <div className={`border rounded-2xl p-6 shadow-xl transition-colors ${
   theme === "dark"
     ? "bg-[#121212] border-white/5"
@@ -709,11 +738,11 @@ const exportToPDF = () => {
           className="flex justify-between items-center bg-white/5 p-3 rounded-xl"
         >
           <div>
-            <p className="font-bold text-white">
+            <p className={`font-bold ${theme === "dark" ? "text-white" : "text-black"}`}>
               ${inc.amount.toLocaleString("es-ES")}
             </p>
             <p className="text-xs text-gray-400">
-  Ingreso {translateFrequency(inc.frequency)}
+  {translateFrequency(inc.frequency)} • Día {inc.payment_day || 1}
 </p>
             
           </div>
@@ -746,20 +775,20 @@ const exportToPDF = () => {
             <div className="grid grid-cols-2 gap-4 divide-y divide-white/5">
               <div>
                 <p className="text-gray-400 text-[10px] uppercase tracking-wider font-bold mb-1">Gastado</p>
-                <p className="text-xl font-bold text-white">${totalExpenses.toLocaleString("es-ES")}</p>
+                <p className={`text-xl font-bold ${theme === "dark" ? "text-white" : "text-gray-900"}`}>${totalExpenses.toLocaleString("es-ES")}</p>
               </div>
             <div className="grid grid-cols-2 gap-2 text-xs border-t border-white/5 pt-3">
-  <div className="bg-white/5 rounded-lg p-2">
+  <div className={`${theme === "dark" ? "bg-white/5" : "bg-gray-200"} rounded-lg p-2`}>
     <p className="text-gray-400">Fijos</p>
-    <p className="text-white font-bold">
+    <p className={`font-bold ${theme === "dark" ? "text-white" : "text-gray-900"}`}>
       ${totalFixedExpenses.toLocaleString("es-ES")}
     </p>
   </div>
-  <div className="bg-white/5 rounded-lg p-2">
+  <div className={`${theme === "dark" ? "bg-white/5" : "bg-gray-200"} rounded-lg p-2`}>
     <p className="text-gray-400">Variables</p>
-    <p className="text-white font-bold">
-      ${totalVariableExpenses.toLocaleString("es-ES")}
-    </p>
+    <p className={`font-bold ${theme === "dark" ? "text-white" : "text-black"}`}>
+  ${totalVariableExpenses.toLocaleString("es-ES")}
+</p>
   </div>
 </div>
             
@@ -773,7 +802,7 @@ const exportToPDF = () => {
                 </p>
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
   
-  <div className="bg-white/5 rounded-lg p-2">
+  <div className={`${theme === "dark" ? "bg-white/5" : "bg-gray-200"} rounded-lg p-2`}>
     <p className="text-gray-400">Disponible</p>
     <p className={cn(
       "font-bold",
@@ -783,7 +812,7 @@ const exportToPDF = () => {
     </p>
   </div>
 
-  <div className="bg-white/5 rounded-lg p-2">
+  <div className={`${theme === "dark" ? "bg-white/5" : "bg-gray-200"} rounded-lg p-2`}>
     <p className="text-gray-400">Ahorro Opcional(20%) </p>
     <p className="text-blue-400 font-bold">
       ${(balance > 0 ? balance * 0.2 : 0).toLocaleString("es-ES")}
