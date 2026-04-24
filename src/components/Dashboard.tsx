@@ -47,6 +47,8 @@ const COLORS = ["#3b82f6", "#8b5cf6", "#d946ef", "#f43f5e", "#10b981", "#f59e0b"
 
 export default function Dashboard({ onLogout }: DashboardProps) {
 
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+
   const [user, setUser] = useState<any>(null);
   const [summary, setSummary] = useState({
   income: 0,
@@ -551,7 +553,11 @@ const exportToPDF = () => {
 };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white font-sans">
+    <div className={`min-h-screen font-sans transition-colors duration-300 ${
+  theme === "dark"
+    ? "bg-[#0a0a0a] text-white"
+    : "bg-gray-100 text-gray-900"
+}`}>
       {/* Navbar */}
       <nav className="border-b border-white/10 bg-black/50 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -563,6 +569,12 @@ const exportToPDF = () => {
               Gast<span className="text-[#3b82f6]">APP</span>
             </span>
           </div>
+          <button
+  onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+  className="mr-4 text-xs px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition"
+>
+  {theme === "dark" ? "🌞 Claro" : "🌙 Oscuro"}
+</button>
           <button 
             onClick={onLogout}
             className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
@@ -580,7 +592,11 @@ const exportToPDF = () => {
           <motion.div 
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="bg-[#121212] border border-white/5 rounded-2xl p-6 shadow-xl relative overflow-hidden"
+            className={`border rounded-2xl p-6 shadow-xl transition-colors ${
+  theme === "dark"
+    ? "bg-[#121212] border-white/5"
+    : "bg-white border-gray-200"
+}`}
           >
             <div className="absolute top-0 right-0 w-32 h-32 bg-[#3b82f6]/10 blur-3xl -mr-16 -mt-16 rounded-full" />
             
@@ -669,10 +685,18 @@ const exportToPDF = () => {
               </div>
             )}
           </motion.div>
-          <div className="bg-[#121212] border border-white/5 rounded-2xl p-6 shadow-xl mt-6">
+          <div className={`border rounded-2xl p-6 shadow-xl transition-colors ${
+  theme === "dark"
+    ? "bg-[#121212] border-white/5"
+    : "bg-white border-gray-200"
+}`}>
 
 </div>
-<div className="bg-[#121212] border border-white/5 rounded-2xl p-6 shadow-xl mt-6">
+<div className={`border rounded-2xl p-6 shadow-xl transition-colors ${
+  theme === "dark"
+    ? "bg-[#121212] border-white/5"
+    : "bg-white border-gray-200"
+}`}>
   <h3 className="text-lg font-bold mb-4">Historial de Ingresos</h3>
 
   {incomes.length === 0 ? (
@@ -713,7 +737,11 @@ const exportToPDF = () => {
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.1 }}
-            className="bg-[#121212] border border-white/5 rounded-2xl p-6 shadow-xl space-y-6"
+            className={`border rounded-2xl p-6 shadow-xl transition-colors ${
+  theme === "dark"
+    ? "bg-[#121212] border-white/5"
+    : "bg-white border-gray-200"
+}`}
           >
             <div className="grid grid-cols-2 gap-4 divide-y divide-white/5">
               <div>
@@ -817,7 +845,11 @@ const exportToPDF = () => {
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.2 }}
-            className="bg-[#121212] border border-white/5 rounded-2xl p-6 shadow-xl"
+            className={`border rounded-2xl p-6 shadow-xl transition-colors ${
+  theme === "dark"
+    ? "bg-[#121212] border-white/5"
+    : "bg-white border-gray-200"
+}`}
           >
             <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
               <Plus className="w-5 h-5 text-[#3b82f6]" />
@@ -831,7 +863,11 @@ const exportToPDF = () => {
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Ej: Supermercado"
-                  className="w-full bg-[#1a1a1a] border border-white/10 rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#3b82f6] outline-none transition-all"
+                  className={`w-full border rounded-xl px-4 py-3 outline-none transition-all ${
+  theme === "dark"
+    ? "bg-[#1a1a1a] border-white/10 text-white"
+    : "bg-white border-gray-300 text-black"
+}`}
                 />
               </div>
               <div className="grid grid-cols-2 gap-4 space-y-4 items-start">
@@ -844,7 +880,11 @@ const exportToPDF = () => {
                     placeholder="0.00"
                     min="0"
                     step="0.01"
-                    className="w-full bg-[#1a1a1a] border border-white/10 rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#3b82f6] outline-none transition-all"
+                    className={`w-full border rounded-xl px-4 py-3 outline-none transition-all ${
+  theme === "dark"
+    ? "bg-[#1a1a1a] border-white/10 text-white"
+    : "bg-white border-gray-300 text-black"
+}`}
                   />
                 </div>
                 
@@ -853,7 +893,11 @@ const exportToPDF = () => {
                   <select 
                     value={category}
                     onChange={(e) => setCategory(e.target.value as Category)}
-                    className="w-full bg-[#1a1a1a] border border-white/10 rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#3b82f6] outline-none transition-all appearance-none"
+                    className={`w-full border rounded-xl px-4 py-3 outline-none transition-all ${
+  theme === "dark"
+    ? "bg-[#1a1a1a] border-white/10 text-white"
+    : "bg-white border-gray-300 text-black"
+}`}
                   >
                     {CATEGORIES.map(cat => (
                       <option key={cat} value={cat}>{cat}</option>
@@ -867,7 +911,11 @@ const exportToPDF = () => {
   <select 
     value={frequency}
     onChange={(e) => setFrequency(e.target.value as "once" | "monthly")}
-    className="w-full bg-[#1a1a1a] border border-white/10 rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#3b82f6] outline-none transition-all"
+    className={`w-full border rounded-xl px-4 py-3 outline-none transition-all ${
+  theme === "dark"
+    ? "bg-[#1a1a1a] border-white/10 text-white"
+    : "bg-white border-gray-300 text-black"
+}`}
   >
     <option value="once">Único</option>
     <option value="monthly">Mensual</option>
@@ -878,7 +926,11 @@ const exportToPDF = () => {
                   type="date"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="w-full bg-[#1a1a1a] border border-white/10 rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#3b82f6] outline-none transition-all"
+                  className={`w-full border rounded-xl px-4 py-3 outline-none transition-all ${
+  theme === "dark"
+    ? "bg-[#1a1a1a] border-white/10 text-white"
+    : "bg-white border-gray-300 text-black"
+}`}
                 />
               </div>
               <button 
@@ -899,7 +951,11 @@ const exportToPDF = () => {
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-[#121212] border border-white/5 rounded-2xl p-6 shadow-xl h-[300px]"
+              className={`border rounded-2xl p-6 shadow-xl transition-colors ${
+  theme === "dark"
+    ? "bg-[#121212] border-white/5"
+    : "bg-white border-gray-200"
+}`}
             >
               <h3 className="text-sm font-bold text-gray-400 uppercase mb-4 flex items-center gap-2">
                 <PieChartIcon className="w-4 h-4" /> Distribución
@@ -940,7 +996,11 @@ const exportToPDF = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="bg-[#121212] border border-white/5 rounded-2xl p-6 shadow-xl h-[300px]"
+              className={`border rounded-2xl p-6 shadow-xl transition-colors ${
+  theme === "dark"
+    ? "bg-[#121212] border-white/5"
+    : "bg-white border-gray-200"
+}`}
             >
               <h3 className="text-sm font-bold text-gray-400 uppercase mb-4 flex items-center gap-2">
                 <TrendingUp className="w-4 h-4" /> Historial
@@ -1020,7 +1080,11 @@ const exportToPDF = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="bg-[#121212] border border-white/5 rounded-2xl shadow-xl overflow-hidden"
+            className={`border rounded-2xl p-6 shadow-xl transition-colors ${
+  theme === "dark"
+    ? "bg-[#121212] border-white/5"
+    : "bg-white border-gray-200"
+}`}
           >
             <div className="p-6 border-b border-white/5 flex items-center justify-between">
               <h3 className="text-lg font-bold">Últimos Movimientos</h3>
