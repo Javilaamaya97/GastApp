@@ -17,9 +17,10 @@ export const addTransaction = async (transaction: Transaction) => {
     .select();
 
   if (error) {
-    console.error("❌ ERROR INSERT:", error);
-    throw error;
-  }
+  console.error("❌ ERROR INSERT:", error);
+  alert(error.message); // 👈 ESTO ES LO NUEVO
+  throw error;
+}
 
   return data;
 };

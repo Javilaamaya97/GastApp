@@ -44,6 +44,21 @@ interface DashboardProps {
 }
 
 const COLORS = ["#3b82f6", "#8b5cf6", "#d946ef", "#f43f5e", "#10b981", "#f59e0b"];
+const parseLocalDate = (value?: string) => {
+  if (!value || typeof value !== "string") {
+    return new Date();
+  }
+
+  const parts = value.split("-");
+
+  if (parts.length !== 3) {
+    return new Date();
+  }
+
+  const [year, month, day] = parts.map(Number);
+
+  return new Date(year, month - 1, day);
+};
 
 export default function Dashboard({ onLogout }: DashboardProps) {
 
@@ -55,6 +70,13 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   expenses: 0,
   balance: 0,
 });
+
+
+// 👇 PEGA ESTO AQUÍ
+const getQuincena = (dateStr: string) => {
+  const d = parseLocalDate(dateStr);
+  return d.getDate() <= 15 ? "first" : "second";
+};
 const translateFrequency = (freq: string) => {
   switch (freq) {
     case "mensual": return "Mensual";
@@ -66,11 +88,32 @@ const translateFrequency = (freq: string) => {
   }
 };
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const expandedExpenses = useMemo(() => {
+  if (!expenses || expenses.length === 0) return [];
+
+  const today = new Date();
+  const currentMonth = today.getMonth();
+  const currentYear = today.getFullYear();
+
+  return expenses.filter((exp) => {
+    const d = parseLocalDate(exp.paid_date || exp.date);
+
+    return (
+      d &&
+      !isNaN(d.getTime()) &&
+      d.getMonth() === currentMonth &&
+      d.getFullYear() === currentYear
+    );
+  });
+}, [expenses]);
+console.log("EXPANDED:", expandedExpenses[0]);
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
+  const [isPaid, setIsPaid] = useState(false);
   const [category, setCategory] = useState<Category>("Otros");
   const [frequency, setFrequency] = useState<"once" | "monthly">("once");
-  const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [date, setDate] = useState(format(parseLocalDate(), "yyyy-MM-dd"));
+  const [dueDate, setDueDate] = useState(format(parseLocalDate(), "yyyy-MM-dd"));
   
   // Income state
   const [incomes, setIncomes] = useState<any[]>([]);
@@ -112,46 +155,89 @@ useEffect(() => {
 
   loadData();
 }, []);
-  const totalExpenses = summary.expenses;
+ const totalExpenses = expandedExpenses
+  .filter(exp => exp.paid_date)
+  .reduce((acc, exp) => acc + Math.round(Number(exp.amount) || 0), 0);
+
+
+
   const totalIncome = useMemo(() => {
-  return incomes.reduce((acc, inc) => acc + (inc.amount || 0), 0);
+  return incomes.reduce((acc, inc) => acc + Math.round(Number(inc.amount) || 0), 0);
 }, [incomes]);
 const monthlyIncome = useMemo(() => {
   return incomes.reduce((acc, inc) => {
+    const amount = Math.round(Number(inc.amount) || 0);
+
     switch (inc.frequency) {
       case "mensual":
-        return acc + inc.amount;
+        return acc + amount;
       case "quincenal":
-        return acc + inc.amount * 2;
+        return acc + amount * 2;
       case "semanal":
-        return acc + inc.amount * 4;
+        return acc + amount * 4;
       case "diario":
-        return acc + inc.amount * 30;
+        return acc + amount * 30;
       case "extra":
-        return acc + inc.amount;
+        return acc + amount;
       default:
-        return acc + inc.amount;
+        return acc + amount;
     }
   }, 0);
 }, [incomes]);
+const recurrentIncome = useMemo(() => {
+  return incomes
+    .filter(i => i.frequency !== "extra")
+    .reduce((acc, inc) => {
+      switch (inc.frequency) {
+        case "mensual":
+          return acc + inc.amount;
+        case "quincenal":
+          return acc + inc.amount * 2;
+        case "semanal":
+          return acc + inc.amount * 4;
+        case "diario":
+          return acc + inc.amount * 30;
+        default:
+          return acc + inc.amount;
+      }
+    }, 0);
+}, [incomes]);
+const incomeFirst = incomes
+  .filter(i => getQuincena(i.date) === "first")
+  .reduce((sum, i) => sum + i.amount, 0);
 
+const incomeSecond = incomes
+  .filter(i => getQuincena(i.date) === "second")
+  .reduce((sum, i) => sum + i.amount, 0);
 
-const balance = totalIncome - summary.expenses;
+const expenseFirst = expandedExpenses
+  .filter(e => getQuincena(e.paid_date || e.date) === "first")
+  .reduce((sum, e) => sum + e.amount, 0);
 
-  const fixedExpenses = expenses.filter(exp => exp.frequency === "monthly");
+const expenseSecond = expandedExpenses
+  .filter(e => getQuincena(e.paid_date || e.date) === "second")
+  .reduce((sum, e) => sum + e.amount, 0);
+
+const firstBalance = incomeFirst - expenseFirst;
+const secondBalance = incomeSecond - expenseSecond;
+const balance = monthlyIncome - totalExpenses;
+
+  const fixedExpenses = expenses.filter(exp => exp.expense_type === "fixed");
 
 const variableExpenses = expenses.filter(
-  exp => exp.frequency !== "monthly"
+  exp => exp.expense_type !== "fixed"
 );
 
 const totalFixedExpenses = fixedExpenses.reduce(
-  (acc, exp) => acc + exp.amount,
+  (acc, exp) => acc + Math.round(Number(exp.amount) || 0),
   0
 );
-
-
+const pendingExpenses = expandedExpenses
+  .filter(exp => !exp.paid_date)
+  .reduce((acc, exp) => acc + Math.round(Number(exp.amount) || 0), 0);
+const realBalance = monthlyIncome - pendingExpenses;
 const totalVariableExpenses = variableExpenses.reduce(
-  (acc, exp) => acc + exp.amount,
+  (acc, exp) => acc + Math.round(Number(exp.amount) || 0),
   0
 );
 const realAvailable = monthlyIncome - totalFixedExpenses;
@@ -160,13 +246,13 @@ const recommendedSavings = realAvailable > 0 ? realAvailable * 0.2 : 0;
 
 const safeToSpend = realAvailable > 0 ? realAvailable - recommendedSavings : 0;
 const monthlyProjection = useMemo(() => {
-  if (totalIncome === 0) return null;
+  if (monthlyIncome === 0) return null;
 
-  const today = new Date();
+  const today = parseLocalDate();
   const day = today.getDate();
 
   // días del mes
-  const daysInMonth = new Date(
+  const daysInMonth = parseLocalDate(
     today.getFullYear(),
     today.getMonth() + 1,
     0
@@ -187,41 +273,434 @@ const monthlyProjection = useMemo(() => {
     projectedTotal,
     remaining
   };
-}, [income, totalVariableExpenses, totalFixedExpenses]);
+}, [monthlyIncome, totalVariableExpenses, totalFixedExpenses]);
+// 🔥 ANÁLISIS POR QUINCENAS
+const quincenaAnalysis = useMemo(() => {
+  if (incomes.length === 0) return null;
+
+  
+  const getQuincena = (dateStr: string) => {
+    const d = parseLocalDate(dateStr);
+    return d.getDate() <= 15 ? "first" : "second";
+  };
+
+  // 🔹 INGRESOS REALES
+  let firstIncome = 0;
+  let secondIncome = 0;
+
+  incomes.forEach((inc) => {
+    if (inc.frequency === "extra") return;
+  const day = inc.payment_day || parseLocalDate(inc.date).getDate();
+
+  // 🔹 PRIMER INGRESO
+  if (day <= 15) {
+    firstIncome += Math.round(Number(inc.amount) || 0);
+  } else {
+    secondIncome += Math.round(Number(inc.amount) || 0);
+  }
+
+  // 🔹 SEGUNDO INGRESO SI ES QUINCENAL
+  if (inc.frequency === "quincenal") {
+    const secondDay = day + 15 > 31 ? 30 : day + 15;
+
+    if (secondDay <= 15) {
+      firstIncome += inc.amount;
+    } else {
+      secondIncome += inc.amount;
+    }
+  }
+});
+
+  // 🔹 GASTOS VARIABLES (se quedan donde pasan)
+  let firstVariable = 0;
+  let secondVariable = 0;
+
+  expenses
+    .filter((e) => e.expense_type === "fixed" || e.frequency === "monthly")
+    .forEach((exp) => {
+      const q = getQuincena(exp.paid_date);
+      if (q === "first") firstVariable += Math.round(Number(exp.amount) || 0);
+      else secondVariable += Math.round(Number(exp.amount) || 0);
+    });
+
+  // 🔹 GASTOS FIJOS (se reparten)
+  const fixedTotal = expenses
+  .filter(e => e.expense_type === "fixed")
+  .reduce((sum, e) => sum + Math.round(Number(e.amount) || 0), 0);
+  const totalIncome = firstIncome + secondIncome;
+
+  let firstFixed = 0;
+  let secondFixed = 0;
+
+  if (totalIncome > 0) {
+    firstFixed = fixedTotal * (firstIncome / totalIncome);
+    secondFixed = fixedTotal * (secondIncome / totalIncome);
+  }
+
+  // 🔹 BALANCES
+ const firstBalance = Math.round(firstIncome - firstVariable - firstFixed);
+const secondBalance = Math.round(secondIncome - secondVariable - secondFixed);
+
+  return {
+    firstHalfIncome: firstIncome,
+    secondHalfIncome: secondIncome,
+
+    firstHalfExpenses: firstVariable + firstFixed,
+    secondHalfExpenses: secondVariable + secondFixed,
+
+    firstBalance,
+    secondBalance,
+  };
+}, [incomes, expenses]);
+
+const criticalExpense = useMemo(() => {
+  if (!quincenaAnalysis) return null;
+
+  const sorted = expenses
+    .filter(e => e.expense_type === "fixed")
+    .sort((a, b) =>
+      parseLocalDate(a.due_date || a.date).getDate() -
+      parseLocalDate(b.due_date || b.date).getDate()
+    );
+
+  let runningBalance = 0;
+
+  let firstIncome = 0;
+  let secondIncome = 0;
+
+  incomes.forEach(inc => {
+    if (inc.frequency === "extra") return;
+
+    const day = inc.payment_day || 1;
+
+    if (day <= 15) firstIncome += inc.amount;
+    else secondIncome += inc.amount;
+
+    if (inc.frequency === "quincenal") {
+      const secondDay = day + 15 > 30 ? 30 : day + 15;
+      if (secondDay <= 15) firstIncome += inc.amount;
+      else secondIncome += inc.amount;
+    }
+  });
+
+  runningBalance = firstIncome;
+
+  for (let exp of sorted) {
+    const expDay = parseLocalDate(exp.due_date || exp.date).getDate();
+
+    if (expDay > 15 && runningBalance === firstIncome) {
+      runningBalance = secondIncome;
+    }
+
+    if (runningBalance < exp.amount) {
+      return exp;
+    }
+
+    runningBalance -= exp.amount;
+  }
+
+  return null;
+}, [expenses, incomes, quincenaAnalysis]);
+const savingPlan = useMemo(() => {
+  if (!quincenaAnalysis) return null;
+
+  const first = quincenaAnalysis.firstBalance;
+  const second = quincenaAnalysis.secondBalance;
+
+  if (second < 0) {
+    const deficit = Math.abs(second);
+    const canSave = Math.max(first, 0);
+    const missing = deficit - canSave;
+
+    return {
+      type: "danger",
+      title: `⚠️ El gasto "${criticalExpense?.description || "principal"}" genera un déficit de $${deficit.toLocaleString("es-ES")} en la segunda quincena.`,
+      plan: `💡 Para cubrirlo:`,
+      details: [
+        `Guarda $${Math.round(canSave).toLocaleString("es-ES")} de la primera quincena`,
+        missing > 0
+          ? `Te faltarán $${Math.round(missing).toLocaleString("es-ES")} adicionales`
+          : "Con eso cubres todo"
+      ]
+    };
+  }
+
+  if (first < 0) {
+    return {
+      type: "danger",
+      title: "🚨 No tienes suficiente dinero en la primera quincena.",
+      plan: "💡 Necesitas ingresos antes del día 15 o reducir gastos.",
+      details: []
+    };
+  }
+
+  return {
+    type: "success",
+    title: "🟢 Tus gastos están bien distribuidos.",
+    plan: null,
+    details: []
+  };
+}, [quincenaAnalysis, criticalExpense]);
+const cashflowAlert = useMemo(() => {
+  if (incomes.length === 0) return null;
+
+  // 🔹 combinar eventos (ingresos + gastos)
+  const events: { date: string; amount: number }[] = [];
+
+  incomes.forEach((inc) => {
+  const baseDate = inc.date || format(parseLocalDate(), "yyyy-MM-dd");
+
+  events.push({
+    date: baseDate,
+    amount: inc.amount
+  });
+
+  if (inc.frequency === "quincenal") {
+    const d = parseLocalDate(baseDate);
+
+    if (!d || isNaN(d.getTime())) return;
+
+    const second = new Date(d);
+    second.setDate(d.getDate() + 15);
+
+    events.push({
+      date: format(second, "yyyy-MM-dd"),
+      amount: inc.amount
+    });
+  }
+});
+
+  expenses.forEach((exp) => {
+  events.push({
+  date: exp.paid_date || exp.due_date || exp.date,
+  amount: -exp.amount
+});
+});
+
+  // 🔹 ordenar por fecha
+  events.sort((a, b) =>
+    parseLocalDate(a.date).getTime() - parseLocalDate(b.date).getTime()
+  );
+
+  // 🔹 simular flujo
+  let balance = 0;
+
+  for (const e of events) {
+    balance += e.amount;
+
+    if (balance < 0) {
+      const parsed = parseLocalDate(e.date);
+
+if (!parsed || isNaN(parsed.getTime())) continue;
+
+return {
+  day: format(parsed, "dd MMM", { locale: es }),
+  rawDate: e.date,
+  deficit: Math.round(Math.abs(balance))
+};
+
+    }
+  }
+
+  return null;
+}, [incomes, expenses]);
+
+  const smartDistribution = useMemo(() => {
+  if (incomes.length === 0 || expenses.length === 0) return [];
+
+  // 🔹 Expandir ingresos (incluye quincenal)
+  const expandedIncomes: any[] = [];
+
+  incomes.forEach((inc) => {
+    if (inc.frequency === "extra") return;
+
+    const baseDay = inc.payment_day || 1;
+
+    expandedIncomes.push({
+      ...inc,
+      effectiveDay: baseDay,
+      remaining: Math.round(Number(inc.amount) || 0)
+    });
+
+    if (inc.frequency === "quincenal") {
+      expandedIncomes.push({
+        ...inc,
+        effectiveDay: baseDay + 15 > 30 ? 30 : baseDay + 15,
+        remaining: Math.round(Number(inc.amount) || 0)
+      });
+    }
+  });
+
+  // 🔹 Ordenar ingresos por día
+  expandedIncomes.sort((a, b) => a.effectiveDay - b.effectiveDay);
+
+  // 🔹 Gastos fijos ordenados por fecha
+  const fixedExpenses = expenses
+    .filter(e => e.expense_type === "fixed")
+    .sort((a, b) =>
+      parseLocalDate(a.due_date || a.date).getDate() -
+      parseLocalDate(b.due_date || b.date).getDate()
+    );
+
+  const distribution: any[] = [];
+
+  // 🔹 Asignación inteligente
+  fixedExpenses.forEach((exp) => {
+    let remainingExpense = Math.round(Number(exp.amount) || 0);
+const expDay = parseLocalDate(exp.due_date || exp.date).getDate();
+
+const validIncomes = expandedIncomes
+  .filter(inc => inc.effectiveDay <= expDay)
+  .sort((a, b) => b.effectiveDay - a.effectiveDay); // 👈 clave
+    let totalAvailable = 0;
+
+for (let inc of validIncomes) {
+  totalAvailable += inc.remaining;
+}
+
+if (totalAvailable >= remainingExpense) {
+  // 🔥 asignar TODO al último ingreso disponible
+  const lastIncome = validIncomes[0];
+
+  distribution.push({
+    incomeDay: lastIncome.effectiveDay,
+    expense: exp.description,
+    amount: Math.round(remainingExpense)
+  });
+
+  lastIncome.remaining -= remainingExpense;
+}
+  });
+
+  const grouped: any = {};
+
+  distribution.forEach(item => {
+    const key = item.incomeDay + "-" + item.expense;
+
+    if (!grouped[key]) {
+      grouped[key] = { ...item };
+    } else {
+      grouped[key].amount = Math.round(grouped[key].amount + item.amount);
+    }
+  });
+
+  return Object.values(grouped);
+}, [incomes, expenses]);
+const paymentRisk = useMemo(() => {
+  if (incomes.length === 0 || expenses.length === 0) return null;
+
+  const incomeMap: Record<number, number> = {};
+
+  incomes.forEach((inc) => {
+    if (inc.frequency === "extra") return;
+
+    const day = inc.payment_day || 1;
+
+    incomeMap[day] = (incomeMap[day] || 0) + Math.round(Number(inc.amount) || 0);
+
+    if (inc.frequency === "quincenal") {
+      const secondDay = day + 15 > 30 ? 30 : day + 15;
+     incomeMap[secondDay] = (incomeMap[secondDay] || 0) + Math.round(Number(inc.amount) || 0);
+    }
+  });
+
+  const incomeDays = Object.keys(incomeMap)
+    .map(Number)
+    .sort((a, b) => a - b);
+
+  const sortedExpenses = expenses
+    .filter(e => e.expense_type === "fixed")
+    .sort((a, b) =>
+      parseLocalDate(a.due_date || a.date).getDate() -
+      parseLocalDate(b.due_date || b.date).getDate()
+    );
+
+  let available = 0;
+
+  for (let exp of sortedExpenses) {
+    const expDay = parseLocalDate(exp.due_date || exp.date).getDate();
+
+    incomeDays.forEach(day => {
+      if (day <= expDay) {
+        available += incomeMap[day];
+        delete incomeMap[day];
+      }
+    });
+
+   if (available < Math.round(Number(exp.amount) || 0)) {
+      return {
+        type: "danger",
+        message: `🚨 No puedes pagar ${exp.description} antes del día ${expDay}`
+      };
+    }
+
+   available -= Math.round(Number(exp.amount) || 0);
+  }
+
+  return null;
+}, [incomes, expenses]);
 
   const spentPercentage = useMemo(() => {
-    if (totalIncome === 0) return 0;
-    return Math.min((totalExpenses / totalIncome) * 100, 100);
+    if (monthlyIncome === 0) return 0;
+return Math.min((totalExpenses / monthlyIncome) * 100, 100);
   }, [totalIncome, totalExpenses]);
 
-  const alert = useMemo(() => {
-  if (totalIncome === 0) {
+ const alert = useMemo(() => {
+
+  // 🔹 SIN INGRESOS
+  if (monthlyIncome === 0) {
     return {
       type: "info",
       message: "Configura tu ingreso"
     };
   }
+
+  // 🔥 ALERTA POR QUINCENAS (PRIORIDAD ALTA)
+  if (quincenaAnalysis) {
+    const { firstBalance, secondBalance } = quincenaAnalysis;
+
+    if (firstBalance < 0) {
+      return {
+        type: "danger",
+        message: `🚨 En la primera quincena te faltan $${Math.abs(Math.round(firstBalance)).toLocaleString("es-ES")}`
+      };
+    }
+  }
 if (safeToSpend <= 0) {
+  // 🔥 VALIDAR SI LOS GASTOS FIJOS SUPERAN INGRESOS DISPONIBLES
+if (smartDistribution.length > 0) {
+  const totalToReserve = smartDistribution.reduce(
+    (acc, item) => acc + item.amount,
+    0
+  );
+
+  if (totalToReserve > monthlyIncome) {
+    return {
+      type: "danger",
+      message: "🚨 Tus gastos fijos superan tus ingresos. Vas a entrar en déficit."
+    };
+  }
+}
   return {
     type: "danger",
     message: "🚨 Ya no deberías hacer más gastos variables este mes."
   };
 }
-  if (balance < 0) {
+  if (monthlyIncome - totalExpenses < 0) {
     return {
       type: "danger",
       message: "🚨 Estás en sobregiro"
     };
   }
 
-  if (totalFixedExpenses > totalIncome * 0.7) {
+  if (totalFixedExpenses > monthlyIncome * 0.7) {
     return {
       type: "danger",
       message: "🚨 Tus gastos fijos superan el 70% de tu ingreso"
     };
   }
 
-  if (balance <= 0) {
+  if (monthlyIncome - totalFixedExpenses <= 0) {
     return {
       type: "warning",
       message: "⚠️ No tienes dinero disponible después de gastos fijos"
@@ -229,10 +708,10 @@ if (safeToSpend <= 0) {
   }
 
   return {
-    type: "success",
-    message: `Te queda disponible $${balance.toLocaleString("es-ES")} para gastar`
-  };
-}, [totalIncome, totalFixedExpenses, balance, realAvailable]);
+  type: "success",
+  message: `Te quedan $${realAvailable.toLocaleString("es-ES")} disponibles después de gastos fijos`
+};
+}, [monthlyIncome, pendingExpenses, totalFixedExpenses]);
 
   const categoryData = useMemo(() => {
     const data = CATEGORIES.map(cat => {
@@ -243,174 +722,93 @@ if (safeToSpend <= 0) {
     }).filter(item => item.value > 0);
     return data;
   }, [expenses]);
-  const lastExpenses = expenses.slice(0, 7).reverse();
+  const lastExpenses = expandedExpenses.slice(0, 7).reverse();
+  console.log("LAST EXPENSES:", lastExpenses);
   const categoryAlert = useMemo(() => {
   if (income === 0) return null;
 
   // 🚨 CONTROL GLOBAL DEL PRESUPUESTO
-if (spentPercentage >= 95) {
-  return {
-    type: "danger",
-    message: "🔴 Estás al límite de tu presupuesto mensual. Evita cualquier gasto innecesario."
-  };
-}
-
-if (spentPercentage >= 80) {
-  return {
-    type: "warning",
-    message: "🟡 Ya usaste la mayor parte de tu presupuesto. Gasta con cuidado."
-  };
-}
-if (realAvailable <= 0) {
-  return {
-    type: "danger",
-    message: "🚨 Ya consumiste tu presupuesto del mes. Evita nuevos gastos."
-  };
-}
-const analyzed = categoryData.map(cat => {
-  const percentage = (cat.value / income) * 100;
-
-  const type =
-    cat.name === "Vivienda" ||
-    cat.name === "Servicios" ||
-    cat.name === "Educación"
-      ? "fixed"
-      : cat.name === "Alimentación" ||
-        cat.name === "Transporte" ||
-        cat.name === "Salud"
-      ? "necessary"
-      : "optional";
-
-  return { ...cat, percentage, type };
-});
-const risky = analyzed
-  .filter(cat => cat.percentage >= 25)
-  .sort((a, b) => {
-    const priority = {
-      optional: 3,
-      necessary: 2,
-      fixed: 1,
-    };
-
-    return priority[b.type] - priority[a.type];
-  });
-if (risky.length === 0) {
-  return {
-    type: "success",
-    message: "🟢 Semáforo verde: tus gastos están equilibrados."
-  };
-}
-const worst = risky[0];
-if (worst.type === "necessary") {
-  return {
-    type: "warning",
-    message: `🟡 ${worst.name} representa ${worst.percentage.toFixed(1)}% de tu ingreso. No es recortable, pero revísalo.`
-  };
-}
-if (worst.type === "optional") {
-  return {
-    type: "danger",
-    message: `🔴 ${worst.name} representa ${worst.percentage.toFixed(1)}% de tu ingreso. Este gasto sí es recortable.`
-  };
-}
-return {
-  type: "info",
-  message: `🔵 ${worst.name} es un gasto fijo. No se recomienda recortar aquí.`
-};
-  const fixedCategories = ["Vivienda"];
-
-  const variableExpenses = expenses.filter(
-    (e) => !fixedCategories.includes(e.category)
-  );
-
-  const variableCategoryData = CATEGORIES.map(cat => {
-    const total = variableExpenses
-      .filter(e => e.category === cat)
-      .reduce((sum, e) => sum + e.amount, 0);
-
-    return { name: cat, value: total };
-  }).filter(c => c.value > 0);
-
-  const topCategory = variableCategoryData.reduce((max, cat) => {
-    return cat.value > (max?.value || 0) ? cat : max;
-  }, null as { name: string; value: number } | null);
-
-  if (!topCategory) return null;
-
-  const percentage = (topCategory.value / income) * 100;
-
-  const formatMoney = (val: number) =>
-    val.toLocaleString("es-ES");
-
-  if (percentage >= 40) {
+  if (spentPercentage >= 95) {
     return {
       type: "danger",
-      message: `🚨 ${topCategory.name}: ${formatMoney(topCategory.value)} este mes en gastos variables.`
+      message: "🔴 Estás al límite de tu presupuesto mensual. Evita cualquier gasto innecesario."
     };
   }
 
-  if (percentage >= 25) {
+  if (spentPercentage >= 80) {
     return {
       type: "warning",
-      message: `⚠️ ${topCategory.name}: ${percentage.toFixed(1)}% de tu ingreso en gastos variables.`
+      message: "🟡 Ya usaste la mayor parte de tu presupuesto. Gasta con cuidado."
     };
   }
 
-  return {
-    type: "success",
-    message: `Tu mayor gasto es ${topCategory.name} (${percentage.toFixed(1)}%) del ingreso.`
-  };
-}, [expenses, income]);
+  if (realAvailable <= 0) {
+    return {
+      type: "danger",
+      message: "🚨 Ya consumiste tu presupuesto del mes. Evita nuevos gastos."
+    };
+  }
+
+  return null;
+}, [income, spentPercentage, realAvailable]);
 
   const addExpense = async (e: React.FormEvent) => {
   e.preventDefault();
 
-  const parsedAmount = parseFloat(amount);
+  if (!description || !amount) return;
 
-  if (!description || !amount || parsedAmount <= 0) {
-    alert("❌ Revisa los datos del gasto");
-    return;
+// 🔥 NUEVA VALIDACIÓN INTELIGENTE
+if (!date && !dueDate) {
+  alert("Debes ingresar fecha del gasto o fecha límite");
+  return;
+}
+
+  const today = parseLocalDate();
+  const paid = date ? parseLocalDate(date) : null;
+
+ if (paid && paid > today) {
+  alert("No puedes registrar un gasto en el futuro");
+  return;
+}
+
+  if (Number(amount) > balance) {
+    const confirmOverdraft = confirm(
+      "⚠️ Este gasto te dejará en negativo. ¿Deseas continuar?"
+    );
+    if (!confirmOverdraft) return;
   }
 
   const newExpense = {
-    description,
-    amount: parsedAmount,
-    category,
-    date: new Date(date + "T12:00:00").toISOString(),
-    frequency,
-  };
-
-  console.log("🚀 ENVIANDO A SUPABASE:", newExpense);
-
-  await addTransaction({
-  user_id: user.id, // 👈 ESTE ES EL CAMBIO IMPORTANTE
   type: "expense",
-  amount: newExpense.amount,
-  date: newExpense.date,
-  description: newExpense.description,
-  frequency: frequency,
-  category: category
-});
+  expense_type: frequency === "monthly" ? "fixed" : "variable",
+  amount: Number(amount),
+  description,
+  category,
 
+  // 🔥 clave
+  date: date || dueDate,
+ paid_date: isPaid ? date : null,
+  due_date: dueDate || date
+};
+  await addTransaction(newExpense);
   await refreshData();
 
   setDescription("");
   setAmount("");
 };
-
   const deleteExpense = async (id: string) => {
   await deleteTransaction(id);
   await refreshData();
 };
-const deleteIncome = (id: string) => {
-  deleteTransaction(id);
-  refreshData();
+const deleteIncome = async (id: string) => {
+  await deleteTransaction(id);
+  await refreshData();
 };
   const exportToExcel = () => {
   // 📊 RESUMEN
   const worksheetData = [
   ["REPORTE FINANCIERO"],
-  ["Fecha", new Date().toLocaleDateString()],
+  ["Fecha", parseLocalDate().toLocaleDateString()],
   [],
   ["RESUMEN"],
   ["Ingreso", income],
@@ -420,7 +818,7 @@ const deleteIncome = (id: string) => {
   ["DESGLOSE DE GASTOS"],
   ["Fecha", "Descripción", "Categoría", "Tipo", "Monto"],
   ...expenses.map((e) => [
-    new Date(e.date).toLocaleDateString(),
+    parseLocalDate(e.date).toLocaleDateString(),
     e.description,
     e.category,
     e.frequency === "monthly" ? "Fijo" : "Variable",
@@ -457,14 +855,14 @@ const exportToPDF = () => {
   
 
   doc.setFontSize(10);
-  doc.text(`Fecha: ${new Date().toLocaleDateString()}`, 14, 16);
+  doc.text(`Fecha: ${parseLocalDate().toLocaleDateString()}`, 14, 16);
 
   // 📊 RESUMEN
   autoTable(doc, {
     startY: 20,
     head: [["Resumen", "Valor"]],
     body: [
-      ["Ingreso", `$${income}`],
+      ["Ingreso", `$${monthlyIncome.toLocaleString("es-ES")}`],
       ["Total Gastado", `$${totalExpenses}`],
       ["Balance", `$${balance}`],
       ["Gastos Fijos", `$${totalFixedExpenses}`],
@@ -475,10 +873,10 @@ const exportToPDF = () => {
 
   // 📋 TABLA DE GASTOS
   const tableData = expenses.map((exp) => [
-    new Date(exp.date).toLocaleDateString(),
+    parseLocalDate(exp.paid_date || exp.due_date || exp.date).toLocaleDateString(),
     exp.description,
     exp.category,
-    exp.frequency === "monthly" ? "Fijo" : "Variable",
+    exp.expense_type === "fixed" ? "Fijo" : "Variable",
     `$${exp.amount}`
   ]);
 
@@ -501,7 +899,7 @@ const exportToPDF = () => {
     variableExpenses: totalVariableExpenses,
     categoryData,
     expenses,
-    date: new Date().toISOString()
+    date: parseLocalDate().toISOString()
   };
 
   const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -519,7 +917,7 @@ const exportToPDF = () => {
 
 };
 
-  const handleSaveIncome = async () => {
+ const handleSaveIncome = async () => {
   const val = parseFloat(tempIncome);
 
   setIncomeError("");
@@ -535,24 +933,20 @@ const exportToPDF = () => {
   }
 
   const newIncome = {
-  id: crypto.randomUUID(),
-  type: "income",
-  amount: val,
-  date: new Date().toISOString(),
-  description: `Ingreso ${incomeFrequency}`,
-  frequency: incomeFrequency,
-  payment_day: paymentDay // 🔥 NUEVO
-};
+    type: "income",
+    amount: val,
+    date: parseLocalDate().toISOString(),
+    description: `Ingreso ${incomeFrequency}`,
+    frequency: incomeFrequency,
+    payment_day: incomeFrequency === "extra" ? null : paymentDay
+  };
 
-  await addTransaction({
-  ...newIncome,
-  user_id: user.id,
-  payment_day: paymentDay
-});
+  await addTransaction(newIncome); // 👈 SIN user_id NI id
+
   await refreshData();
 
-  setIncome(val);
   setIsEditingIncome(false);
+  setTempIncome("");
 };
 
   return (
@@ -619,7 +1013,7 @@ const exportToPDF = () => {
             </div>
 
             {isEditingIncome ? (
-              <div className="space-y-4">
+              <div className="space-y-6">
                 <div className="grid grid-cols-2 gap-2">
                   {(["diario", "semanal", "quincenal", "mensual", "extra"] as const).map((freq) => (
                     <button 
@@ -662,6 +1056,7 @@ const exportToPDF = () => {
   </div>
 
   {/* DÍA DE PAGO */}
+  {incomeFrequency !== "extra" && (
   <div>
     <label className="text-xs text-gray-400 font-bold">
       Día en que recibes el ingreso
@@ -673,14 +1068,10 @@ const exportToPDF = () => {
       max="31"
       value={paymentDay}
       onChange={(e) => setPaymentDay(Number(e.target.value))}
-      className={`w-full mt-1 rounded-xl px-4 py-2 text-sm outline-none transition-colors ${
-  theme === "dark"
-    ? "bg-white/5 border border-white/10 text-white"
-    : "bg-gray-100 border border-gray-300 text-black"
-}`}
+      className="..."
     />
   </div>
-
+)}
   {/* ERROR */}
   </div>
                   {incomeError && (
@@ -707,10 +1098,21 @@ const exportToPDF = () => {
             ) : (
               <div className="space-y-2">
                 <div className="flex items-baseline gap-2">
-                  <h2 className="text-3xl font-black text-white">
-                    ${income.toLocaleString("es-ES")}
-                  </h2>
-                  <span className="text-xs text-gray-500 font-bold uppercase">{incomeFrequency}</span>
+                  <h2 className={`text-3xl font-black ${
+  theme === "dark" ? "text-white" : "text-gray-900"
+}`}>
+  ${monthlyIncome.toLocaleString("es-ES")}
+</h2>
+
+<span className="text-xs text-gray-500 font-bold uppercase">
+  mensual
+</span>
+
+<p className="text-xs text-gray-400">
+  Equivale a $
+  {recurrentIncome.toLocaleString("es-ES")}
+  {" "}en ingresos recurrentes
+</p>
                 </div>
                 {income === 0 ? (
                   <p className="text-xs text-amber-400 font-medium animate-pulse">¡Configura tu ingreso para empezar a planificar!</p>
@@ -735,7 +1137,7 @@ const exportToPDF = () => {
       {incomes.map((inc) => (
         <div
           key={inc.id}
-          className="flex justify-between items-center bg-white/5 p-3 rounded-xl"
+          className="flex justify-between items-center bg-white/5 p-4 rounded-xl"
         >
           <div>
             <p className={`font-bold ${theme === "dark" ? "text-white" : "text-black"}`}>
@@ -780,6 +1182,14 @@ const exportToPDF = () => {
             <div className="grid grid-cols-2 gap-2 text-xs border-t border-white/5 pt-3">
   <div className={`${theme === "dark" ? "bg-white/5" : "bg-gray-200"} rounded-lg p-2`}>
     <p className="text-gray-400">Fijos</p>
+   {pendingExpenses > 0 && (
+  <>
+    <p className="text-gray-400">Pendientes</p>
+    <p className="font-bold text-amber-400">
+      ${Math.round(pendingExpenses).toLocaleString("es-ES")}
+    </p>
+  </>
+)}
     <p className={`font-bold ${theme === "dark" ? "text-white" : "text-gray-900"}`}>
       ${totalFixedExpenses.toLocaleString("es-ES")}
     </p>
@@ -793,27 +1203,17 @@ const exportToPDF = () => {
 </div>
             
               <div className="text-right">
-                <p className="text-gray-400 text-[10px] uppercase tracking-wider font-bold mb-1">Disponible</p>
+                <p className="text-gray-400 text-[10px] uppercase tracking-wider font-bold mb-1">Disponible real</p>
                 <p className={cn(
                   "text-xl font-bold",
                   balance >= 0 ? "text-emerald-400" : "text-rose-500"
                 )}>
-                  ${balance.toLocaleString("es-ES")}
+                  ${realAvailable.toLocaleString("es-ES")}
                 </p>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-  
-  <div className={`${theme === "dark" ? "bg-white/5" : "bg-gray-200"} rounded-lg p-2`}>
-    <p className="text-gray-400">Disponible</p>
-    <p className={cn(
-      "font-bold",
-      balance >= 0 ? "text-emerald-400" : "text-rose-500"
-    )}>
-      ${balance.toLocaleString("es-ES")}
-    </p>
-  </div>
+                <div className="mt-3 text-xs">
 
   <div className={`${theme === "dark" ? "bg-white/5" : "bg-gray-200"} rounded-lg p-2`}>
-    <p className="text-gray-400">Ahorro Opcional(20%) </p>
+    <p className="text-gray-400">Ahorro Opcional (20%)</p>
     <p className="text-blue-400 font-bold">
       ${(balance > 0 ? balance * 0.2 : 0).toLocaleString("es-ES")}
     </p>
@@ -899,7 +1299,7 @@ const exportToPDF = () => {
 }`}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4 space-y-4 items-start">
+              <div className="grid grid-cols-2 gap-4 items-start">
                 <div className="space-y-1">
                   <label className="text-xs text-gray-400 uppercase font-bold">Monto</label>
                   <input 
@@ -934,34 +1334,71 @@ const exportToPDF = () => {
                   </select>
                 </div>
               </div>
-              <div className="space-y-1">
-              <div className="space-y-1">
-  <label className="text-xs text-gray-400 uppercase font-bold">Frecuencia</label>
-  <select 
-    value={frequency}
-    onChange={(e) => setFrequency(e.target.value as "once" | "monthly")}
-    className={`w-full border rounded-xl px-4 py-3 outline-none transition-all ${
-  theme === "dark"
-    ? "bg-[#1a1a1a] border-white/10 text-white"
-    : "bg-white border-gray-300 text-black"
-}`}
-  >
-    <option value="once">Único</option>
-    <option value="monthly">Mensual</option>
-  </select>
+              <div className="space-y-3">
+
+  {/* FRECUENCIA */}
+  <div className="space-y-1">
+    <label className="text-xs text-gray-400 uppercase font-bold">Frecuencia</label>
+    <select 
+      value={frequency}
+      onChange={(e) => setFrequency(e.target.value as "once" | "monthly")}
+      className={`w-full border rounded-xl px-4 py-3 outline-none transition-all ${
+        theme === "dark"
+          ? "bg-[#1a1a1a] border-white/10 text-white"
+          : "bg-white border-gray-300 text-black"
+      }`}
+    >
+      <option value="once">Único</option>
+      <option value="monthly">Mensual</option>
+    </select>
+  </div>
+
+  {/* FECHA DEL GASTO */}
+<div className="space-y-1">
+  <label className="text-xs text-gray-400 uppercase font-bold">
+    Fecha del gasto
+  </label>
+
+  <input 
+    type="date"
+    value={date}
+    onChange={(e) => setDate(e.target.value)}
+    className={`w-full border rounded-xl px-4 py-3 ${
+      theme === "dark"
+        ? "bg-[#1a1a1a] border-white/10 text-white"
+        : "bg-white border-gray-300 text-black"
+    }`}
+  />
 </div>
-                <label className="text-xs text-gray-400 uppercase font-bold">Fecha</label>
-                <input 
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className={`w-full border rounded-xl px-4 py-3 outline-none transition-all ${
-  theme === "dark"
-    ? "bg-[#1a1a1a] border-white/10 text-white"
-    : "bg-white border-gray-300 text-black"
-}`}
-                />
-              </div>
+
+{/* FECHA LÍMITE */}
+<div className="space-y-1">
+  <label className="text-xs text-gray-400 uppercase font-bold">
+    Fecha límite de pago
+  </label>
+
+  <input 
+    type="date"
+    value={dueDate}
+    onChange={(e) => setDueDate(e.target.value)}
+    className={`w-full border rounded-xl px-4 py-3 ${
+      theme === "dark"
+        ? "bg-[#1a1a1a] border-white/10 text-white"
+        : "bg-white border-gray-300 text-black"
+    }`}
+  />
+</div>
+</div>
+<div className="flex items-center gap-2">
+  <input
+    type="checkbox"
+    checked={isPaid}
+    onChange={(e) => setIsPaid(e.target.checked)}
+  />
+  <label className="text-xs text-gray-400">
+    Ya pagué este gasto
+  </label>
+</div>
               <button 
                 type="submit"
                 className="w-full bg-[#3b82f6] hover:bg-[#2563eb] text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-blue-500/20 active:scale-95 flex items-center justify-center gap-2"
@@ -973,8 +1410,10 @@ const exportToPDF = () => {
           </motion.div>
         </div>
 
-        {/* Right Column: List & Charts */}
-        <div className="lg:col-span-8 space-y-8">
+        
+       {/* RIGHT COLUMN */}
+<div className="lg:col-span-8 space-y-8">
+
           {/* Charts Section */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <motion.div 
@@ -989,7 +1428,7 @@ const exportToPDF = () => {
               <h3 className="text-sm font-bold text-gray-400 uppercase mb-4 flex items-center gap-2">
                 <PieChartIcon className="w-4 h-4" /> Distribución
               </h3>
-              <ResponsiveContainer width="100%" height="85%">
+              <ResponsiveContainer width="100%" height={300}>
                 <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
   <Pie
     data={categoryData}
@@ -1034,76 +1473,283 @@ const exportToPDF = () => {
               <h3 className="text-sm font-bold text-gray-400 uppercase mb-4 flex items-center gap-2">
                 <TrendingUp className="w-4 h-4" /> Historial
               </h3>
-              <ResponsiveContainer width="100%" height="85%">
-                <div className="text-center mt-2 text-xs text-gray-400">
-  {categoryData.length > 0 && (
-  <p className="text-sm text-gray-400 whitespace-nowrap overflow-hidden text-ellipsis">
-    Mayor gasto:{" "}
-    <span className="text-white font-bold">
-      {
-        categoryData.reduce((max, cat) =>
-          cat.value > max.value ? cat : max
-        ).name
-      }
-    </span>
-  </p>
-)}
-</div>
-                <BarChart
-  data={lastExpenses}
-  margin={{ top: 10, right: 20, left: 0, bottom: 5 }}
+              <div className="w-full h-[300px]">
+  <ResponsiveContainer width="100%" height="100%">
+                                <BarChart
+ data={expenses
+  .map(e => ({
+    ...e,
+    displayDate: e.paid_date || e.due_date || e.date
+  }))
+  .slice(0, 7)
+  .reverse()
+}
 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
-                  <XAxis
-  dataKey="date"
-  tickFormatter={(date) =>
-    format(new Date(date), "dd MMM", { locale: es })
-  }
-  stroke="#888"
+                  <CartesianGrid 
+  strokeDasharray="3 3" 
+  stroke={theme === "dark" ? "#333" : "#ccc"} 
+  vertical={false} 
+/>
+                 <XAxis dataKey="displayDate"
+  tickFormatter={(date) => {
+  const d = parseLocalDate(date);
+
+  if (!d || isNaN(d.getTime())) return "";
+
+  return format(d, "dd MMM", { locale: es });
+}}
+  stroke={theme === "dark" ? "#888" : "#374151"}
 />
                   <YAxis 
-  tickFormatter={(value) => `$${value / 1000}k`}
-  stroke="#888"
+  tickFormatter={(value) => 
+  `$${value.toLocaleString("es-ES")}`
+}
+  stroke={theme === "dark" ? "#888" : "#374151"}
 />
                   <Tooltip
   formatter={(value: number) =>
     `$${value.toLocaleString("es-ES")}`
   }
-  labelFormatter={(label) =>
-    format(new Date(label), "dd MMM yyyy", { locale: es })
-  }
-  contentStyle={{
-    backgroundColor: "#0f172a",
-    border: "1px solid #1e293b",
-    borderRadius: "10px"
-  }}
-  itemStyle={{ color: "#fff" }}
+  labelFormatter={(label) => {
+  const d = parseLocalDate(label);
+
+  if (!d || isNaN(d.getTime())) return "";
+
+  return format(d, "dd MMM yyyy", { locale: es });
+}}
+ contentStyle={{
+  backgroundColor: theme === "dark" ? "#0f172a" : "#ffffff",
+  border: theme === "dark" ? "1px solid #1e293b" : "1px solid #e5e7eb",
+  borderRadius: "10px"
+}}
+itemStyle={{ color: theme === "dark" ? "#fff" : "#000" }}
+labelStyle={{ color: theme === "dark" ? "#fff" : "#000" }}
 />
-                  <Bar
+                 <Bar
   dataKey="amount"
   radius={[6, 6, 0, 0]}
   barSize={25}
 >
-  {lastExpenses.map((entry, index) => (
-    <Cell
-      key={`cell-${index}`}
-      fill={
-        entry.category === "Entretenimiento"
-          ? "#ef4444"
-          : entry.category === "Alimentación"
-          ? "#f59e0b"
-          : entry.category === "Vivienda"
-          ? "#8b5cf6"
-          : "#3b82f6"
-      }
-    />
-  ))}
+  {expenses
+    .slice(0, 7)
+    .reverse()
+    .map((entry, index) => (
+      <Cell
+        key={`cell-${index}`}
+        fill={
+          entry.category === "Entretenimiento"
+            ? "#ef4444"
+            : entry.category === "Alimentación"
+            ? "#f59e0b"
+            : entry.category === "Vivienda"
+            ? "#8b5cf6"
+            : "#3b82f6"
+        }
+      />
+    ))}
 </Bar>
                 </BarChart>
               </ResponsiveContainer>
+              </div>
             </motion.div>
           </div>
+{/* 🧠 ASISTENTE FINANCIERO */}
 
+{paymentRisk && (
+  <div className="mt-3 p-3 rounded-xl bg-red-500/10 text-red-400 text-sm font-semibold">
+    {paymentRisk.message}
+  </div>
+)}
+<motion.div
+  initial={{ opacity: 0, y: 20 }}
+  animate={{ opacity: 1, y: 0 }}
+  className={`border rounded-2xl p-6 shadow-xl transition-colors ${
+    theme === "dark"
+      ? "bg-[#121212] border-white/5"
+      : "bg-white border-gray-200"
+  }`}
+>
+ <h3 className={`text-lg font-bold mb-4 ${
+  theme === "dark" ? "text-white" : "text-gray-900"
+}`}>
+  🧠 Asistente Financiero
+</h3>
+
+  {!smartDistribution || smartDistribution.length === 0 ? (
+    <p className="text-sm text-gray-400">
+      Agrega ingresos y gastos fijos para ver recomendaciones inteligentes.
+    </p>
+  ) : (
+    <div className="space-y-4">
+
+      {/* 🔹 DISTRIBUCIÓN DE GASTOS */}
+      <div>
+        <p className="text-xs uppercase text-gray-400 font-bold mb-2">
+          Distribución de gastos fijos
+        </p>
+
+        {smartDistribution.map((item, i) => (
+          <div
+            key={i}
+            className={`flex justify-between items-center p-3 rounded-xl ${
+              theme === "dark" ? "bg-white/5" : "bg-gray-100"
+            }`}
+          >
+            <div className="text-sm">
+              <p className="font-bold">
+                Día {item.incomeDay}
+              </p>
+              <p className="text-xs text-gray-400">
+                {item.expense}
+              </p>
+            </div>
+
+            <p className="font-bold text-blue-400">
+              ${item.amount.toLocaleString("es-ES")}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* 🔹 BALANCE POR QUINCENA */}
+      {quincenaAnalysis && (
+        <div>
+          <p className="text-xs uppercase text-gray-400 font-bold mb-2">
+            Estado por quincena
+          </p>
+
+          <div className="grid grid-cols-2 gap-3">
+
+            <div className={`p-3 rounded-xl ${
+              theme === "dark" ? "bg-white/5" : "bg-gray-100"
+            }`}>
+              <p className="text-xs text-gray-400">Primera quincena</p>
+              <p className={`font-bold ${
+                quincenaAnalysis.firstBalance >= 0
+                  ? "text-emerald-400"
+                  : "text-rose-500"
+              }`}>
+                ${quincenaAnalysis.firstBalance.toLocaleString("es-ES")}
+              </p>
+            </div>
+
+            <div className={`p-3 rounded-xl ${
+              theme === "dark" ? "bg-white/5" : "bg-gray-100"
+            }`}>
+              <p className="text-xs text-gray-400">Segunda quincena</p>
+              <p className={`font-bold ${
+                quincenaAnalysis.secondBalance >= 0
+                  ? "text-emerald-400"
+                  : "text-rose-500"
+              }`}>
+                ${quincenaAnalysis.secondBalance.toLocaleString("es-ES")}
+              </p>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* 🔹 RECOMENDACIÓN INTELIGENTE */}
+      
+      {quincenaAnalysis && (
+        <div className={`p-4 rounded-xl ${
+          theme === "dark"
+            ? "bg-blue-500/10 text-blue-400"
+            : "bg-blue-100 text-blue-700"
+        }`}>
+          {quincenaAnalysis.firstBalance < 0 && (
+            <p>
+              ⚠️ Estás gastando más de lo que recibes en la primera quincena. 
+              Intenta cubrir gastos grandes con el segundo ingreso.
+            </p>
+          )}
+
+
+          {!cashflowAlert &&
+ quincenaAnalysis.firstBalance >= 0 &&
+ quincenaAnalysis.secondBalance >= 0 && (
+  <p>
+    ✅ Vas bien distribuido. Puedes ahorrar o gastar con tranquilidad.
+  </p>
+)}
+
+          {/* 🔥 ALERTA DE FLUJO */}
+{cashflowAlert && (
+  <div className="mt-3 p-3 rounded-xl bg-rose-500/10 text-rose-400 text-sm font-semibold">
+    ⚠️ Te quedarías sin dinero el día {cashflowAlert.day}. <br />
+
+    💸 Te faltan ${cashflowAlert.deficit.toLocaleString("es-ES")} <br />
+
+    💡 Recomendación:
+    <ul className="mt-2 list-disc ml-4 text-xs">
+      <li>Reduce gastos variables</li>
+      <li>O mueve gastos a después del día {cashflowAlert.day}</li>
+      <li>O agrega un ingreso extra antes de esa fecha</li>
+    </ul>
+       </div>
+      )}
+      {savingPlan && (
+  <div
+    className={`mt-3 p-5 rounded-xl border ${
+      savingPlan.type === "danger"
+        ? theme === "dark"
+          ? "bg-rose-500/10 border-rose-500/20"
+          : "bg-rose-100 border-rose-300"
+        : theme === "dark"
+        ? "bg-emerald-500/10 border-emerald-500/20"
+        : "bg-emerald-100 border-emerald-300"
+    }`}
+  >
+
+    {/* 🔴 TITULO */}
+    <p
+      className={`text-sm font-bold ${
+        savingPlan.type === "danger"
+          ? theme === "dark"
+            ? "text-rose-400"
+            : "text-rose-700"
+          : theme === "dark"
+          ? "text-emerald-400"
+          : "text-emerald-700"
+      }`}
+    >
+      {savingPlan.title}
+    </p>
+
+    {/* 💡 PLAN */}
+    {savingPlan.plan && (
+      <p
+        className={`mt-3 text-sm font-semibold ${
+          theme === "dark" ? "text-white" : "text-gray-900"
+        }`}
+      >
+        {savingPlan.plan}
+      </p>
+    )}
+
+    {/* 📊 DETALLES */}
+    <div className="mt-2 space-y-1">
+      {savingPlan.details?.map((d, i) => (
+        <p
+          key={i}
+          className={`text-sm ${
+            theme === "dark" ? "text-gray-300" : "text-gray-700"
+          }`}
+        >
+          • {d}
+        </p>
+      ))}
+    </div>
+
+  </div>
+)}
+        </div>
+      )}
+
+    </div>
+  )}
+</motion.div>
           {/* Expense List */}
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
@@ -1163,18 +1809,26 @@ const exportToPDF = () => {
                           exit={{ opacity: 0, scale: 0.95 }}
                           className="hover:bg-white/5 transition-colors group"
                         >
-                          <td className="px-6 py-4 text-sm text-gray-400">
-                            {format(new Date(exp.date), "dd MMM", { locale: es })}
-                          </td>
+                         <td className="px-6 py-4 text-sm text-gray-400">
+  {(() => {
+    const d = parseLocalDate(exp.paid_date || exp.due_date || exp.date);
+
+    if (!d || isNaN(d.getTime())) return "—";
+
+    return format(d, "dd MMM", { locale: es });
+  })()}
+</td>
                           <td className="px-6 py-4 font-medium">{exp.description}</td>
                           <td className="px-6 py-4">
                             <span className="text-xs px-2 py-1 rounded-full bg-white/5 border border-white/10">
                               {exp.category}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-right font-bold text-white">
-                            ${exp.amount.toLocaleString("es-ES")}
-                          </td>
+                          <td className={`px-6 py-4 text-right font-bold ${
+  theme === "dark" ? "text-white" : "text-black"
+}`}>
+  ${exp.amount.toLocaleString("es-ES")}
+</td>
                           <td className="px-6 py-4 text-right">
                             <button 
                               onClick={() => deleteExpense(exp.id)}

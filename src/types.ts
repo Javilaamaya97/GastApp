@@ -1,13 +1,13 @@
-export interface Expense {
-  id: string;
-  description: string;
-  amount: number;
-  category: string;
-  date: string;
-  frequency: "once" | "monthly";
-}
-
-export type Category = "Alimentación" | "Transporte" | "Vivienda" | "Entretenimiento" | "Salud" | "Otros";
+// =======================
+// 🔹 CATEGORÍAS
+// =======================
+export type Category =
+  | "Alimentación"
+  | "Transporte"
+  | "Vivienda"
+  | "Entretenimiento"
+  | "Salud"
+  | "Otros";
 
 export const CATEGORIES: Category[] = [
   "Alimentación",
@@ -17,11 +17,73 @@ export const CATEGORIES: Category[] = [
   "Salud",
   "Otros",
 ];
+
+// =======================
+// 🔹 TIPOS DE GASTO
+// =======================
+export type ExpenseType = "fixed" | "variable" | "one-time";
+
+// =======================
+// 🔹 GASTOS
+// =======================
+export type Expense = {
+  id: string;
+  amount: number;
+  description: string;
+
+  category: Category;
+  type: ExpenseType;
+
+  // 🧠 CUANDO SALE EL DINERO (CLAVE REAL)
+  paidDate: string;
+
+  // 📅 SOLO SI ES FIJO
+  dueDate?: string;
+};
+
+// =======================
+// 🔹 INGRESOS
+// =======================
 export type Income = {
   id: string;
   amount: number;
-  type: "salary" | "extra" | "freelance" | "other";
-  frequency: "once" | "weekly" | "biweekly" | "monthly";
+  type: "income";
+
+  frequency: "diario" | "semanal" | "quincenal" | "mensual" | "extra";
+
+  // 🧠 CUANDO ENTRA EL DINERO
   date: string;
+
   description: string;
+
+  // 🔥 para análisis quincenal
+  payment_day?: number;
 };
+
+// =======================
+// 🔹 TRANSACCIONES (DB / SUPABASE)
+// =======================
+export interface Transaction {
+  id?: string;
+  type: "income" | "expense";
+
+  amount: number;
+  description: string;
+
+  date: string; // base única para todo (IMPORTANTE)
+
+  // opcionales por tipo
+  category?: Category;
+  expenseType?: ExpenseType;
+
+  // solo gastos reales
+  paidDate?: string;
+  dueDate?: string;
+
+  // ingresos
+  frequency?: Income["frequency"];
+  payment_day?: number;
+
+  // multiusuario
+  user_id?: string;
+}
