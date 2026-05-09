@@ -752,6 +752,16 @@ finalDistribution.forEach((item: any) => {
 return finalDistribution;
 }, [incomes, expenses]);
 const paymentRisk = useMemo(() => {
+  // 🔹 solo evaluar si hay gastos fijos pendientes
+const pendingFixedExpenses = expenses.filter(
+  e =>
+    e.expense_type === "fixed" &&
+    !e.paid_date
+);
+
+if (pendingFixedExpenses.length === 0) {
+  return null;
+}
   if (incomes.length === 0 || expenses.length === 0) return null;
 
   const incomeMap: Record<number, number> = {};
@@ -847,13 +857,6 @@ if (smartDistribution.length > 0) {
     };
   }
 }
-if (monthlyIncome > receivedIncome) {
-    return {
-      type: "warning",
-      message:
-        "⚠️ Tu dinero actual está comprometido, pero tus próximos ingresos cubrirán el resto del mes."
-    };
-  }
   return {
     type: "danger",
     message: "🚨 Ya no deberías hacer más gastos variables este mes."
@@ -908,12 +911,13 @@ if (monthlyIncome > receivedIncome) {
     };
   }
 
-  if (realAvailable <= 0) {
-    return {
-      type: "danger",
-      message: "⚠️ Tu dinero actual está comprometido, pero tus próximos ingresos cubrirán el resto del mes."
-    };
-  }
+  if (safeToSpend <= 0) {
+  return {
+    type: "danger",
+    message:
+      "🚨 Ya no tienes dinero disponible en esta quincena."
+  };
+}
 
   return null;
 }, [income, spentPercentage, realAvailable]);
