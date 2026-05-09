@@ -203,12 +203,28 @@ const recurrentIncome = useMemo(() => {
     }, 0);
 }, [incomes]);
 const incomeFirst = incomes
-  .filter(i => getQuincena(i.date) === "first")
-  .reduce((sum, i) => sum + i.amount, 0);
+  .filter((i) => {
+    const day =
+      i.payment_day ||
+      parseLocalDate(i.date).getDate();
+
+    return day <= 15;
+  })
+  .reduce((sum, i) => {
+    return sum + Math.round(Number(i.amount) || 0);
+  }, 0);
 
 const incomeSecond = incomes
-  .filter(i => getQuincena(i.date) === "second")
-  .reduce((sum, i) => sum + i.amount, 0);
+  .filter((i) => {
+    const day =
+      i.payment_day ||
+      parseLocalDate(i.date).getDate();
+
+    return day > 15;
+  })
+  .reduce((sum, i) => {
+    return sum + Math.round(Number(i.amount) || 0);
+  }, 0);
 
 const expenseFirst = expandedExpenses
   .filter(e => getQuincena(e.paid_date || e.date) === "first")
@@ -218,8 +234,6 @@ const expenseSecond = expandedExpenses
   .filter(e => getQuincena(e.paid_date || e.date) === "second")
   .reduce((sum, e) => sum + e.amount, 0);
 
-const firstBalance = incomeFirst - expenseFirst;
-const secondBalance = incomeSecond - expenseSecond;
 const balance = monthlyIncome - totalExpenses;
 
   const fixedExpenses = expenses.filter(exp => exp.expense_type === "fixed");
@@ -240,11 +254,118 @@ const totalVariableExpenses = variableExpenses.reduce(
   (acc, exp) => acc + Math.round(Number(exp.amount) || 0),
   0
 );
-const realAvailable = monthlyIncome - totalFixedExpenses;
+//const realAvailable = monthlyIncome - totalFixedExpenses;
+const today = new Date();
 
-const recommendedSavings = realAvailable > 0 ? realAvailable * 0.2 : 0;
+// 🔹 INGRESOS YA RECIBIDOS
+const receivedIncome = incomes
+  .filter((inc) => {
+    const incomeDate = parseLocalDate(inc.date);
+    return incomeDate <= today;
+  })
+  .reduce((acc, inc) => {
+    return acc + Math.round(Number(inc.amount) || 0);
+  }, 0);
 
-const safeToSpend = realAvailable > 0 ? realAvailable - recommendedSavings : 0;
+// 🔹 GASTOS YA PAGADOS
+const paidExpenses = expenses
+  .filter((exp) => exp.paid_date)
+  .reduce((acc, exp) => {
+    return acc + Math.round(Number(exp.amount) || 0);
+  }, 0);
+
+// 🔹 DINERO RESERVADO PARA GASTOS FIJOS PENDIENTES
+const currentDay = today.getDate();
+
+// 🔹 SOLO RESERVAR GASTOS CERCANOS
+const reservedMoney = expenses
+  .filter((exp) => {
+    // solo gastos fijos pendientes
+    if (exp.expense_type !== "fixed") return false;
+    if (exp.paid_date) return false;
+
+    const due = parseLocalDate(
+      exp.due_date || exp.date
+    );
+
+    const dueDay = due.getDate();
+
+    // 🔥 lógica inteligente:
+    // solo reservar gastos que vencen
+    // antes del próximo ingreso
+
+    if (currentDay <= 15) {
+      return dueDay <= 15;
+    }
+
+    return dueDay > 15;
+  })
+  .reduce((acc, exp) => {
+    return acc + Math.round(Number(exp.amount) || 0);
+  }, 0);
+
+// 🔹 DINERO REALMENTE DISPONIBLE HOY
+const realAvailable =
+  receivedIncome -
+  paidExpenses -
+  reservedMoney;
+
+// 🔹 AHORRO RECOMENDADO
+const recommendedSavings =
+  realAvailable > 0
+    ? realAvailable * 0.2
+    : 0;
+
+// 🔹 GASTO LIBRE
+const immediateExpenses = expandedExpenses
+  .filter((exp) => {
+    if (exp.paid_date) return false;
+
+    const due = parseLocalDate(
+      exp.due_date || exp.date
+    );
+
+    const dueDay = due.getDate();
+
+    // 🔹 solo gastos antes del próximo ingreso
+    return dueDay <= 15;
+  })
+  .reduce((acc, exp) => {
+    return acc + Math.round(Number(exp.amount) || 0);
+  }, 0);
+
+  // 🔹 DINERO RESERVADO PARA GASTOS PRÓXIMOS
+// 🔹 DINERO RESERVADO REAL
+const reservedToday = expenses
+  .filter((exp) => {
+
+    // ignorar pagados
+    if (exp.paid_date) return false;
+
+    // solo gastos fijos
+    if (exp.expense_type !== "fixed") return false;
+
+    const dueDay = parseLocalDate(
+      exp.due_date || exp.date
+    ).getDate();
+
+    // 🔹 reservar solo lo cercano
+    return dueDay <= 15;
+  })
+  .reduce((acc, exp) => {
+    return acc + Math.round(Number(exp.amount) || 0);
+  }, 0);
+
+// 🔹 ingresos disponibles según la quincena
+const activeIncome =
+  currentDay <= 15
+    ? incomeFirst
+    : incomeFirst + incomeSecond;
+
+// 🔹 dinero libre real
+const safeToSpend =
+  activeIncome - reservedToday;
+
 const monthlyProjection = useMemo(() => {
   if (monthlyIncome === 0) return null;
 
@@ -316,26 +437,35 @@ const quincenaAnalysis = useMemo(() => {
   let secondVariable = 0;
 
   expenses
-    .filter((e) => e.expense_type === "fixed" || e.frequency === "monthly")
+    .filter((e) => e.expense_type !== "fixed")
     .forEach((exp) => {
       const q = getQuincena(exp.paid_date);
       if (q === "first") firstVariable += Math.round(Number(exp.amount) || 0);
       else secondVariable += Math.round(Number(exp.amount) || 0);
     });
 
-  // 🔹 GASTOS FIJOS (se reparten)
-  const fixedTotal = expenses
-  .filter(e => e.expense_type === "fixed")
-  .reduce((sum, e) => sum + Math.round(Number(e.amount) || 0), 0);
-  const totalIncome = firstIncome + secondIncome;
+  // 🔹 GASTOS FIJOS SEGÚN FECHA REAL
+let firstFixed = 0;
+let secondFixed = 0;
 
-  let firstFixed = 0;
-  let secondFixed = 0;
+expenses
+  .filter((e) => e.expense_type === "fixed")
+  .forEach((exp) => {
 
-  if (totalIncome > 0) {
-    firstFixed = fixedTotal * (firstIncome / totalIncome);
-    secondFixed = fixedTotal * (secondIncome / totalIncome);
-  }
+    const dueDay = parseLocalDate(
+      exp.due_date || exp.date
+    ).getDate();
+
+    // 🔹 si vence antes o el 15
+    if (dueDay <= 15) {
+      firstFixed += Math.round(Number(exp.amount) || 0);
+    }
+
+    // 🔹 si vence después del 15
+    else {
+      secondFixed += Math.round(Number(exp.amount) || 0);
+    }
+  });
 
   // 🔹 BALANCES
  const firstBalance = Math.round(firstIncome - firstVariable - firstFixed);
@@ -376,11 +506,20 @@ const criticalExpense = useMemo(() => {
     if (day <= 15) firstIncome += inc.amount;
     else secondIncome += inc.amount;
 
-    if (inc.frequency === "quincenal") {
-      const secondDay = day + 15 > 30 ? 30 : day + 15;
-      if (secondDay <= 15) firstIncome += inc.amount;
-      else secondIncome += inc.amount;
-    }
+    // 🔹 SI ES QUINCENAL
+if (inc.frequency === "quincenal") {
+
+  // ingreso actual
+  if (day <= 15) {
+    firstIncome += Math.round(Number(inc.amount) || 0);
+    secondIncome += Math.round(Number(inc.amount) || 0);
+  }
+
+  else {
+    secondIncome += Math.round(Number(inc.amount) || 0);
+    firstIncome += Math.round(Number(inc.amount) || 0);
+  }
+}
   });
 
   runningBalance = firstIncome;
@@ -560,15 +699,27 @@ for (let inc of validIncomes) {
 
 if (totalAvailable >= remainingExpense) {
   // 🔥 asignar TODO al último ingreso disponible
-  const lastIncome = validIncomes[0];
+  // 🔹 DIVIDIR ENTRE MÚLTIPLES INGRESOS
+for (let inc of validIncomes) {
+
+  if (remainingExpense <= 0) break;
+
+  if (inc.remaining <= 0) continue;
+
+  const usedAmount = Math.min(
+    inc.remaining,
+    remainingExpense
+  );
 
   distribution.push({
-    incomeDay: lastIncome.effectiveDay,
+    incomeDay: inc.effectiveDay,
     expense: exp.description,
-    amount: Math.round(remainingExpense)
+    amount: Math.round(usedAmount)
   });
 
-  lastIncome.remaining -= remainingExpense;
+  inc.remaining -= usedAmount;
+  remainingExpense -= usedAmount;
+}
 }
   });
 
@@ -584,7 +735,21 @@ if (totalAvailable >= remainingExpense) {
     }
   });
 
-  return Object.values(grouped);
+  const finalDistribution = Object.values(grouped);
+
+// 🔹 ETIQUETA DE COBERTURA
+finalDistribution.forEach((item: any) => {
+
+  if (item.incomeDay <= 15) {
+    item.coveredBy = "Primera quincena";
+  }
+
+  else {
+    item.coveredBy = "Segunda quincena";
+  }
+});
+
+return finalDistribution;
 }, [incomes, expenses]);
 const paymentRisk = useMemo(() => {
   if (incomes.length === 0 || expenses.length === 0) return null;
@@ -666,6 +831,7 @@ return Math.min((totalExpenses / monthlyIncome) * 100, 100);
       };
     }
   }
+  
 if (safeToSpend <= 0) {
   // 🔥 VALIDAR SI LOS GASTOS FIJOS SUPERAN INGRESOS DISPONIBLES
 if (smartDistribution.length > 0) {
@@ -681,6 +847,13 @@ if (smartDistribution.length > 0) {
     };
   }
 }
+if (monthlyIncome > receivedIncome) {
+    return {
+      type: "warning",
+      message:
+        "⚠️ Tu dinero actual está comprometido, pero tus próximos ingresos cubrirán el resto del mes."
+    };
+  }
   return {
     type: "danger",
     message: "🚨 Ya no deberías hacer más gastos variables este mes."
@@ -700,16 +873,9 @@ if (smartDistribution.length > 0) {
     };
   }
 
-  if (monthlyIncome - totalFixedExpenses <= 0) {
-    return {
-      type: "warning",
-      message: "⚠️ No tienes dinero disponible después de gastos fijos"
-    };
-  }
-
-  return {
+   return {
   type: "success",
-  message: `Te quedan $${realAvailable.toLocaleString("es-ES")} disponibles después de gastos fijos`
+  message: `Te quedan $${safeToSpend.toLocaleString("es-ES")} disponibles para usar en esta quincena`
 };
 }, [monthlyIncome, pendingExpenses, totalFixedExpenses]);
 
@@ -745,7 +911,7 @@ if (smartDistribution.length > 0) {
   if (realAvailable <= 0) {
     return {
       type: "danger",
-      message: "🚨 Ya consumiste tu presupuesto del mes. Evita nuevos gastos."
+      message: "⚠️ Tu dinero actual está comprometido, pero tus próximos ingresos cubrirán el resto del mes."
     };
   }
 
@@ -1203,12 +1369,16 @@ const exportToPDF = () => {
 </div>
             
               <div className="text-right">
-                <p className="text-gray-400 text-[10px] uppercase tracking-wider font-bold mb-1">Disponible real</p>
+                <p className="text-gray-400 text-[10px] uppercase tracking-wider font-bold mb-1">Disponible hoy</p>
                 <p className={cn(
                   "text-xl font-bold",
                   balance >= 0 ? "text-emerald-400" : "text-rose-500"
                 )}>
-                  ${realAvailable.toLocaleString("es-ES")}
+                  ${safeToSpend.toLocaleString("es-ES")}
+                  <p className="text-xs text-yellow-400 mt-1">
+  Reservado: $
+  {reservedToday.toLocaleString("es-ES")}
+</p>
                 </p>
                 <div className="mt-3 text-xs">
 
@@ -1587,6 +1757,7 @@ labelStyle={{ color: theme === "dark" ? "#fff" : "#000" }}
         <p className="text-xs uppercase text-gray-400 font-bold mb-2">
           Distribución de gastos fijos
         </p>
+        
 
         {smartDistribution.map((item, i) => (
           <div
@@ -1602,6 +1773,9 @@ labelStyle={{ color: theme === "dark" ? "#fff" : "#000" }}
               <p className="text-xs text-gray-400">
                 {item.expense}
               </p>
+              <p className="text-[10px] text-blue-400">
+  {item.coveredBy}
+</p>
             </div>
 
             <p className="font-bold text-blue-400">
