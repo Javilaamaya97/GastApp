@@ -106,14 +106,16 @@ const translateFrequency = (freq: string) => {
     );
   });
 }, [expenses]);
-console.log("EXPANDED:", expandedExpenses[0]);
+if (expandedExpenses?.length > 0) {
+  console.log("EXPANDED:", expandedExpenses[0]);
+}
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [isPaid, setIsPaid] = useState(false);
   const [category, setCategory] = useState<Category>("Otros");
   const [frequency, setFrequency] = useState<"once" | "monthly">("once");
-  const [date, setDate] = useState(format(parseLocalDate(), "yyyy-MM-dd"));
-  const [dueDate, setDueDate] = useState(format(parseLocalDate(), "yyyy-MM-dd"));
+  const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [dueDate, setDueDate] = useState(format(new Date(), "yyyy-MM-dd"));
   
   // Income state
   const [incomes, setIncomes] = useState<any[]>([]);
@@ -334,8 +336,7 @@ const immediateExpenses = expandedExpenses
     return acc + Math.round(Number(exp.amount) || 0);
   }, 0);
 
-  // 🔹 DINERO RESERVADO PARA GASTOS PRÓXIMOS
-// 🔹 DINERO RESERVADO REAL
+ // 🔹 DINERO RESERVADO REAL
 const reservedToday = expenses
   .filter((exp) => {
 
@@ -343,33 +344,45 @@ const reservedToday = expenses
     if (exp.paid_date) return false;
 
     // solo gastos fijos
-    if (exp.expense_type !== "fixed") return false;
+    return exp.expense_type === "fixed";
 
-    const dueDay = parseLocalDate(
-      exp.due_date || exp.date
-    ).getDate();
-
-    // 🔹 reservar solo lo cercano
-    return dueDay <= 15;
   })
   .reduce((acc, exp) => {
     return acc + Math.round(Number(exp.amount) || 0);
   }, 0);
+// 🔹 INGRESO PROYECTADO DEL MES
+const projectedIncome =
+  incomeFirst + incomeSecond;
 
-// 🔹 ingresos disponibles según la quincena
-const activeIncome =
-  currentDay <= 15
-    ? incomeFirst
-    : incomeFirst + incomeSecond;
+// 🔹 INGRESOS EXTRA
+const extraIncome = incomes
+  .filter((inc) => inc.frequency === "extra")
+  .reduce((acc, inc) => {
+    return acc + Math.round(Number(inc.amount) || 0);
+  }, 0);
 
-// 🔹 dinero libre real
-const safeToSpend =
-  activeIncome - reservedToday;
+// 🔹 LIQUIDEZ REAL HOY
+const liquidIncome =
+  (
+    currentDay <= 15
+      ? incomeFirst
+      : incomeFirst + incomeSecond
+  ) + extraIncome;
+
+// 🔹 DINERO REALMENTE DISPONIBLE HOY
+const liquidAvailable =
+  liquidIncome
+  - paidExpenses
+  - reservedToday;
+
+// 🔹 DISPONIBLE PROYECTADO DEL MES
+const projectedAvailable =
+  projectedIncome - totalFixedExpenses;
 
 const monthlyProjection = useMemo(() => {
   if (monthlyIncome === 0) return null;
 
-  const today = parseLocalDate();
+  const today = new Date();
   const day = today.getDate();
 
   // días del mes
@@ -572,7 +585,14 @@ const savingPlan = useMemo(() => {
       details: []
     };
   }
-
+if (projectedAvailable < 0) {
+  return {
+    type: "warning",
+    title: "⚠️ Necesitas ajustar gastos o aumentar ingresos para cerrar el mes sin déficit.",
+    plan: null,
+    details: []
+  };
+}
   return {
     type: "success",
     title: "🟢 Tus gastos están bien distribuidos.",
@@ -587,7 +607,7 @@ const cashflowAlert = useMemo(() => {
   const events: { date: string; amount: number }[] = [];
 
   incomes.forEach((inc) => {
-  const baseDate = inc.date || format(parseLocalDate(), "yyyy-MM-dd");
+  const baseDate = inc.date || format(new Date(), "yyyy-MM-dd");
 
   events.push({
     date: baseDate,
@@ -842,7 +862,7 @@ return Math.min((totalExpenses / monthlyIncome) * 100, 100);
     }
   }
   
-if (safeToSpend <= 0) {
+if (liquidAvailable <= 0) {
   // 🔥 VALIDAR SI LOS GASTOS FIJOS SUPERAN INGRESOS DISPONIBLES
 if (smartDistribution.length > 0) {
   const totalToReserve = smartDistribution.reduce(
@@ -877,8 +897,17 @@ if (smartDistribution.length > 0) {
   }
 
    return {
-  type: "success",
-  message: `Te quedan $${safeToSpend.toLocaleString("es-ES")} disponibles para usar en esta quincena`
+  type:
+    projectedAvailable < 0
+      ? "danger"
+      : projectedAvailable < 200000
+      ? "warning"
+      : "success",
+
+  message:
+    projectedAvailable < 0
+      ? `💸 Tu proyección para el final del mes es de -$${Math.abs(projectedAvailable).toLocaleString("es-ES")}`
+      : `✅ Tu proyección para el final del mes es de $${projectedAvailable.toLocaleString("es-ES")}`
 };
 }, [monthlyIncome, pendingExpenses, totalFixedExpenses]);
 
@@ -911,7 +940,7 @@ if (smartDistribution.length > 0) {
     };
   }
 
-  if (safeToSpend <= 0) {
+  if (liquidAvailable <= 0) {
   return {
     type: "danger",
     message:
@@ -933,7 +962,7 @@ if (!date && !dueDate) {
   return;
 }
 
-  const today = parseLocalDate();
+  const today = new Date();
   const paid = date ? parseLocalDate(date) : null;
 
  if (paid && paid > today) {
@@ -956,8 +985,13 @@ if (!date && !dueDate) {
   category,
 
   // 🔥 clave
-  date: date || dueDate,
- paid_date: isPaid ? date : null,
+  date: format(
+  parseLocalDate(date || dueDate),
+  "yyyy-MM-dd"
+),
+ paid_date: isPaid
+  ? format(new Date(), "yyyy-MM-dd")
+  : null,
   due_date: dueDate || date
 };
   await addTransaction(newExpense);
@@ -974,11 +1008,27 @@ const deleteIncome = async (id: string) => {
   await deleteTransaction(id);
   await refreshData();
 };
+const markAsPaid = async (expense: any) => {
+
+  const { error } = await supabase
+    .from("transactions")
+    .update({
+      paid_date: format(new Date(), "yyyy-MM-dd")
+    })
+    .eq("id", expense.id);
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  await refreshData();
+};
   const exportToExcel = () => {
   // 📊 RESUMEN
   const worksheetData = [
   ["REPORTE FINANCIERO"],
-  ["Fecha", parseLocalDate().toLocaleDateString()],
+  ["Fecha", new Date().toLocaleDateString()],
   [],
   ["RESUMEN"],
   ["Ingreso", income],
@@ -1025,7 +1075,7 @@ const exportToPDF = () => {
   
 
   doc.setFontSize(10);
-  doc.text(`Fecha: ${parseLocalDate().toLocaleDateString()}`, 14, 16);
+  doc.text(`Fecha: ${new Date().toLocaleDateString()}`, 14, 16);
 
   // 📊 RESUMEN
   autoTable(doc, {
@@ -1043,12 +1093,12 @@ const exportToPDF = () => {
 
   // 📋 TABLA DE GASTOS
   const tableData = expenses.map((exp) => [
-    parseLocalDate(exp.paid_date || exp.due_date || exp.date).toLocaleDateString(),
-    exp.description,
-    exp.category,
-    exp.expense_type === "fixed" ? "Fijo" : "Variable",
-    `$${exp.amount}`
-  ]);
+  parseLocalDate(exp.date).toLocaleDateString(),
+  exp.description,
+  exp.category,
+  exp.expense_type === "fixed" ? "Fijo" : "Variable",
+  `$${exp.amount}`
+]);
 
   autoTable(doc, {
     startY: (doc as any).lastAutoTable?.finalY
@@ -1069,7 +1119,7 @@ const exportToPDF = () => {
     variableExpenses: totalVariableExpenses,
     categoryData,
     expenses,
-    date: parseLocalDate().toISOString()
+    date: new Date().toISOString()
   };
 
   const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -1105,7 +1155,7 @@ const exportToPDF = () => {
   const newIncome = {
     type: "income",
     amount: val,
-    date: parseLocalDate().toISOString(),
+    date: new Date().toISOString(),
     description: `Ingreso ${incomeFrequency}`,
     frequency: incomeFrequency,
     payment_day: incomeFrequency === "extra" ? null : paymentDay
@@ -1378,7 +1428,7 @@ const exportToPDF = () => {
                   "text-xl font-bold",
                   balance >= 0 ? "text-emerald-400" : "text-rose-500"
                 )}>
-                  ${safeToSpend.toLocaleString("es-ES")}
+                  ${liquidAvailable.toLocaleString("es-ES")}
                   <p className="text-xs text-yellow-400 mt-1">
   Reservado: $
   {reservedToday.toLocaleString("es-ES")}
@@ -1846,11 +1896,13 @@ labelStyle={{ color: theme === "dark" ? "#fff" : "#000" }}
 
           {!cashflowAlert &&
  quincenaAnalysis.firstBalance >= 0 &&
- quincenaAnalysis.secondBalance >= 0 && (
+ quincenaAnalysis.secondBalance >= 0 &&
+ projectedAvailable >= 0 && (
   <p>
     ✅ Vas bien distribuido. Puedes ahorrar o gastar con tranquilidad.
   </p>
 )}
+
 
           {/* 🔥 ALERTA DE FLUJO */}
 {cashflowAlert && (
@@ -1978,45 +2030,77 @@ labelStyle={{ color: theme === "dark" ? "#fff" : "#000" }}
                         </td>
                       </tr>
                     ) : (
-                      expenses.map((exp) => (
-                        <motion.tr 
-                          key={exp.id}
-                          layout
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, scale: 0.95 }}
-                          className="hover:bg-white/5 transition-colors group"
-                        >
-                         <td className="px-6 py-4 text-sm text-gray-400">
-  {(() => {
-    const d = parseLocalDate(exp.paid_date || exp.due_date || exp.date);
+                      expenses.map((exp) => {
 
-    if (!d || isNaN(d.getTime())) return "—";
+  console.log(exp);
 
-    return format(d, "dd MMM", { locale: es });
-  })()}
-</td>
-                          <td className="px-6 py-4 font-medium">{exp.description}</td>
-                          <td className="px-6 py-4">
-                            <span className="text-xs px-2 py-1 rounded-full bg-white/5 border border-white/10">
-                              {exp.category}
-                            </span>
-                          </td>
-                          <td className={`px-6 py-4 text-right font-bold ${
-  theme === "dark" ? "text-white" : "text-black"
-}`}>
-  ${exp.amount.toLocaleString("es-ES")}
-</td>
-                          <td className="px-6 py-4 text-right">
-                            <button 
-                              onClick={() => deleteExpense(exp.id)}
-                              className="p-2 text-gray-500 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </motion.tr>
-                      ))
+  return (
+    <motion.tr 
+      key={exp.id}
+      layout
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      className="hover:bg-white/5 transition-colors group"
+    >
+
+      <td className="px-6 py-4 text-sm text-gray-400">
+        {(() => {
+          const d = new Date(exp.date);
+
+if (isNaN(d.getTime())) return "—";
+
+return format(d, "dd MMM", { locale: es });
+        })()}
+      </td>
+
+      <td className="px-6 py-4 font-medium">
+        {exp.description}
+      </td>
+
+      <td className="px-6 py-4">
+        <span className="text-xs px-2 py-1 rounded-full bg-white/5 border border-white/10">
+          {exp.category}
+        </span>
+      </td>
+
+      <td className={`px-6 py-4 text-right font-bold ${
+        theme === "dark"
+          ? "text-white"
+          : "text-black"
+      }`}>
+        ${exp.amount.toLocaleString("es-ES")}
+      </td>
+
+      <td className="px-6 py-4 text-right">
+
+        {!exp.paid_date && !exp.is_paid && (
+          <button
+            onClick={() => markAsPaid(exp)}
+            className="text-emerald-400 text-xs mr-3 hover:underline"
+          >
+            Pagar
+          </button>
+        )}
+
+        {(exp.paid_date || exp.is_paid) && (
+          <span className="text-emerald-400 text-xs mr-3">
+            ✅ Pagado
+          </span>
+        )}
+
+        <button 
+          onClick={() => deleteExpense(exp.id)}
+          className="p-2 text-gray-500 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+
+      </td>
+
+    </motion.tr>
+  );
+})
                     )}
                   </AnimatePresence>
                 </tbody>
