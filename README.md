@@ -1,20 +1,69 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# GastAPP
 
-# Run and deploy your AI Studio app
+Aplicación inteligente de gestión financiera personal desarrollada para ayudar a usuarios a controlar ingresos, gastos, liquidez y proyección mensual de dinero.
 
-This contains everything you need to run your app locally.
+---
 
-View your app in AI Studio: https://ai.studio/apps/9884ae9b-bcfa-4296-8236-cb322f37f6a6
+## Funcionalidades principales
 
-## Run Locally
+* Gestión de ingresos recurrentes y extras
+* Registro de gastos fijos y variables
+* Proyección financiera mensual
+* Control de liquidez disponible
+* Sistema de reservas inteligentes
+* Distribución automática por quincenas
+* Alertas de déficit financiero
+* Seguimiento de pagos pendientes
+* Dashboard financiero interactivo
 
-**Prerequisites:**  Node.js
+---
 
+## Características financieras
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+GastAPP diferencia entre:
+
+* Liquidez disponible actual
+* Gastos reservados pendientes
+* Gastos ya ejecutados
+* Flujo de caja por quincena
+* Riesgo financiero mensual
+* Proyección de déficit o superávit
+
+---
+
+## Tecnologías utilizadas
+
+* React
+* TypeScript
+* TailwindCSS
+* Supabase
+* Framer Motion
+* Vite
+
+---
+
+## Instalación local
+
+### Prerrequisitos
+
+* Node.js
+* npm
+
+### Ejecutar proyecto
+
+```bash
+npm install
+npm run dev
+```
+
+---
+
+## Estado del proyecto
+
+Actualmente en desarrollo activo.
+
+---
+
+## Copyright
+
+© 2026 GastAPP — Developed by Marcela Ávila
