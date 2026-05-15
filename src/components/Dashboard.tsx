@@ -38,6 +38,8 @@ import html2canvas from "html2canvas";
 import { Income } from "../types";
 import { useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { signOut } from "../services/authService";
+
 
 interface DashboardProps {
   onLogout: () => void;
@@ -1193,7 +1195,10 @@ const exportToPDF = () => {
   {theme === "dark" ? "🌞 Claro" : "🌙 Oscuro"}
 </button>
           <button 
-            onClick={onLogout}
+            onClick={async () => {
+  await signOut();
+  onLogout();
+}}
             className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
           >
             <LogOut className="w-5 h-5" />
