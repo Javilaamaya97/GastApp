@@ -1,8 +1,31 @@
+import { useEffect, useState } from "react";
+
 export default function GastAppLandingPage({
   onStart
 }: {
   onStart: () => void;
 }) {
+
+
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+useEffect(() => {
+
+  const handler = (e: any) => {
+
+    e.preventDefault();
+
+    setDeferredPrompt(e);
+
+  };
+
+  window.addEventListener("beforeinstallprompt", handler);
+
+  return () => {
+    window.removeEventListener("beforeinstallprompt", handler);
+  };
+
+}, []);
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-900 to-black text-white overflow-hidden">
       {/* HERO */}
@@ -32,6 +55,24 @@ export default function GastAppLandingPage({
 >
   Probar Gratis
 </button>
+{deferredPrompt && (
+  <button
+    onClick={async () => {
+
+      deferredPrompt.prompt();
+
+      const { outcome } = await deferredPrompt.userChoice;
+
+      if (outcome === "accepted") {
+        console.log("✅ App instalada");
+      }
+
+    }}
+    className="bg-white/10 border border-cyan-400/30 hover:bg-cyan-500/20 text-cyan-300 px-6 py-3 rounded-2xl font-semibold transition-all"
+  >
+    📲 Instalar App
+  </button>
+)}
 
               
             </div>

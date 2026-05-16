@@ -39,7 +39,7 @@ import { Income } from "../types";
 import { useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { signOut } from "../services/authService";
-
+import { getProfile } from "../services/profileService";
 
 interface DashboardProps {
   onLogout: () => void;
@@ -67,6 +67,7 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
 
   const [user, setUser] = useState<any>(null);
+  const [profile, setProfile] = useState<any>(null);
   const [summary, setSummary] = useState({
   income: 0,
   expenses: 0,
@@ -142,6 +143,15 @@ const refreshData = async () => {
   setSummary(summaryData);
 };
 useEffect(() => {
+  const loadProfile = async () => {
+
+  const data = await getProfile();
+
+  setProfile(data);
+
+};
+
+loadProfile();
   const loadData = async () => {
     // 🔐 Obtener usuario logueado
     const { data: userData } = await supabase.auth.getUser();
@@ -1179,7 +1189,7 @@ const exportToPDF = () => {
 }`}>
       {/* Navbar */}
       <nav className="border-b border-white/10 bg-black/50 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-2">
           <div className="flex items-center gap-3 group cursor-pointer">
             <div className="w-10 h-10 bg-gradient-to-tr from-[#7c3aed] to-[#3b82f6] rounded-xl flex items-center justify-center shadow-lg shadow-purple-500/20 group-hover:rotate-12 transition-transform">
               <Wallet className="w-6 h-6 text-white" />
@@ -1190,7 +1200,7 @@ const exportToPDF = () => {
           </div>
           <button
   onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-  className="mr-4 text-xs px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition"
+  className="mr-4 text-sm px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition"
 >
   {theme === "dark" ? "🌞 Claro" : "🌙 Oscuro"}
 </button>
@@ -1199,7 +1209,7 @@ const exportToPDF = () => {
   await signOut();
   onLogout();
 }}
-            className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+            className="flex items-center gap-2 p-2 rounded-lg text-gray-400 hover:text-white transition-colors"
           >
             <LogOut className="w-5 h-5" />
             <span className="hidden sm:inline">Cerrar Sesión</span>
@@ -1207,7 +1217,43 @@ const exportToPDF = () => {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <main className="max-w-7xl mx-auto px-4 py-8">
+        {profile?.plan === "premium" ? (
+
+  <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-amber-500/20 to-yellow-500/10 border border-amber-500/20">
+
+    <p className="text-amber-400 font-bold text-lg">
+      👑 Plan Premium Activo
+    </p>
+
+    <p className="text-sm text-gray-300 mt-1">
+      Acceso a funciones avanzadas de análisis financiero.
+    </p>
+
+  </div>
+
+) : (
+
+  <div className="mb-6 p-4 rounded-2xl bg-white/5 border border-white/10">
+
+    <p className="text-white font-bold text-lg">
+      🔒 Plan Free
+    </p>
+
+    <p className="text-sm text-gray-400 mt-1">
+      Actualiza a Premium para desbloquear análisis inteligentes avanzados.
+    </p>
+
+    <button
+      className="mt-4 bg-amber-500 hover:bg-amber-400 text-black font-bold px-5 py-2 rounded-xl transition-all"
+    >
+      Mejorar a Premium
+    </button>
+
+  </div>
+
+)}
+<div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Left Column: Form & Stats */}
         <div className="lg:col-span-4 space-y-8">
           {/* Income Config Card */}
@@ -1221,7 +1267,7 @@ const exportToPDF = () => {
 }`}
           >
             <div className="flex items-center justify-between mb-4">
-              <p className="text-gray-400 text-xs uppercase tracking-wider font-bold">
+              <p className="text-gray-400 text-sm uppercase tracking-wider font-bold">
                 {income === 0 ? "Configura tu Ingreso" : "Configuración de Ingreso"}
               </p>
               {!isEditingIncome && (
@@ -1230,7 +1276,7 @@ const exportToPDF = () => {
                     setTempIncome(income.toString());
                     setIsEditingIncome(true);
                   }}
-                  className="text-[#3b82f6] text-xs font-bold hover:underline"
+                  className="text-[#3b82f6] text-sm font-bold hover:underline"
                 >
                   Editar
                 </button>
@@ -1245,7 +1291,7 @@ const exportToPDF = () => {
                       key={freq}
                       onClick={() => setIncomeFrequency(freq)}
                       className={cn(
-                        "py-2 rounded-lg text-[10px] font-bold transition-all",
+                        "py-2 rounded-lg text-sm font-bold transition-all",
                         incomeFrequency === freq ? "bg-[#3b82f6] text-white" : theme === "dark"
   ? "bg-white/5 text-gray-400"
   : "bg-gray-200 text-gray-700"
@@ -1283,7 +1329,7 @@ const exportToPDF = () => {
   {/* DÍA DE PAGO */}
   {incomeFrequency !== "extra" && (
   <div>
-    <label className="text-xs text-gray-400 font-bold">
+    <label className="text-sm text-gray-400 font-bold">
       Día en que recibes el ingreso
     </label>
 
@@ -1300,7 +1346,7 @@ const exportToPDF = () => {
   {/* ERROR */}
   </div>
                   {incomeError && (
-    <p className="text-red-400 text-xs mt-2">
+    <p className="text-red-400 text-sm mt-2">
       {incomeError}
     </p>
   )}
@@ -1308,13 +1354,13 @@ const exportToPDF = () => {
                 <div className="flex gap-2 pt-2">
                   <button 
                     onClick={() => setIsEditingIncome(false)}
-                    className="flex-1 py-3 rounded-xl text-xs font-bold bg-white/5 text-gray-400 hover:bg-white/10 transition-colors"
+                    className="flex-1 py-3 rounded-xl text-sm font-bold bg-white/5 text-gray-400 hover:bg-white/10 transition-colors"
                   >
                     Cancelar
                   </button>
                   <button 
                     onClick={handleSaveIncome}
-                    className="flex-1 py-3 rounded-xl text-xs font-black bg-gradient-to-r from-[#3b82f6] to-[#2563eb] text-white shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-95 transition-all"
+                    className="flex-1 py-3 rounded-xl text-sm font-black bg-gradient-to-r from-[#3b82f6] to-[#2563eb] text-white shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-95 transition-all"
                   >
                     GUARDAR INGRESO
                   </button>
@@ -1329,20 +1375,20 @@ const exportToPDF = () => {
   ${monthlyIncome.toLocaleString("es-ES")}
 </h2>
 
-<span className="text-xs text-gray-500 font-bold uppercase">
+<span className="text-sm text-gray-500 font-bold uppercase">
   mensual
 </span>
 
-<p className="text-xs text-gray-400">
+<p className="text-sm text-gray-400">
   Equivale a $
   {recurrentIncome.toLocaleString("es-ES")}
   {" "}en ingresos recurrentes
 </p>
                 </div>
                 {income === 0 ? (
-                  <p className="text-xs text-amber-400 font-medium animate-pulse">¡Configura tu ingreso para empezar a planificar!</p>
+                  <p className="text-sm text-amber-400 font-medium animate-pulse">¡Configura tu ingreso para empezar a planificar!</p>
                 ) : (
-                  <p className="text-xs text-gray-500">Este es tu presupuesto base para planificar tus gastos.</p>
+                  <p className="text-sm text-gray-500">Este es tu presupuesto base para planificar tus gastos.</p>
                 )}
               </div>
             )}
@@ -1368,16 +1414,16 @@ const exportToPDF = () => {
             <p className={`font-bold ${theme === "dark" ? "text-white" : "text-black"}`}>
               ${inc.amount.toLocaleString("es-ES")}
             </p>
-            <p className="text-xs text-gray-400">
+            <p className="text-sm text-gray-400">
   {translateFrequency(inc.frequency)} • Día {inc.payment_day || 1}
 </p>
             
           </div>
 
-          <div className="text-xs text-gray-400">
+          <div className="text-sm text-gray-400">
             <button
   onClick={() => deleteIncome(inc.id)}
-  className="text-red-400 text-xs hover:underline mt-1"
+  className="text-red-400 text-sm hover:underline mt-1"
 >
   Eliminar
 </button>
@@ -1401,10 +1447,10 @@ const exportToPDF = () => {
           >
             <div className="grid grid-cols-2 gap-4 divide-y divide-white/5">
               <div>
-                <p className="text-gray-400 text-[10px] uppercase tracking-wider font-bold mb-1">Gastado</p>
+                <p className="text-gray-400 text-sm uppercase tracking-wider font-bold mb-1">Gastado</p>
                 <p className={`text-xl font-bold ${theme === "dark" ? "text-white" : "text-gray-900"}`}>${totalExpenses.toLocaleString("es-ES")}</p>
               </div>
-            <div className="grid grid-cols-2 gap-2 text-xs border-t border-white/5 pt-3">
+            <div className="grid grid-cols-2 gap-2 text-sm border-t border-white/5 pt-3">
   <div className={`${theme === "dark" ? "bg-white/5" : "bg-gray-200"} rounded-lg p-2`}>
     <p className="text-gray-400">Fijos</p>
    {pendingExpenses > 0 && (
@@ -1428,18 +1474,18 @@ const exportToPDF = () => {
 </div>
             
               <div className="text-right">
-                <p className="text-gray-400 text-[10px] uppercase tracking-wider font-bold mb-1">Disponible hoy</p>
+                <p className="text-gray-400 text-sm uppercase tracking-wider font-bold mb-1">Disponible hoy</p>
                 <p className={cn(
                   "text-xl font-bold",
                   balance >= 0 ? "text-emerald-400" : "text-rose-500"
                 )}>
                   ${liquidAvailable.toLocaleString("es-ES")}
-                  <p className="text-xs text-yellow-400 mt-1">
+                  <p className="text-sm text-yellow-400 mt-1">
   Reservado: $
   {reservedToday.toLocaleString("es-ES")}
 </p>
                 </p>
-                <div className="mt-3 text-xs">
+                <div className="mt-3 text-sm">
 
   <div className={`${theme === "dark" ? "bg-white/5" : "bg-gray-200"} rounded-lg p-2`}>
     <p className="text-gray-400">Ahorro Opcional (20%)</p>
@@ -1452,7 +1498,7 @@ const exportToPDF = () => {
               </div>
             </div>
             <div className="space-y-2">
-              <div className="flex justify-between text-[10px] font-bold uppercase">
+              <div className="flex justify-between text-sm font-bold uppercase">
                 <span className="text-gray-500">Uso del presupuesto</span>
                 <span className={cn(
                   spentPercentage > 90 ? "text-rose-500" : spentPercentage > 70 ? "text-amber-500" : "text-emerald-500"
@@ -1515,7 +1561,7 @@ const exportToPDF = () => {
             </h3>
             <form onSubmit={addExpense} className="space-y-4">
               <div className="space-y-1">
-                <label className="text-xs text-gray-400 uppercase font-bold">Descripción</label>
+                <label className="text-sm text-gray-400 uppercase font-bold">Descripción</label>
                 <input 
                   type="text"
                   value={description}
@@ -1530,7 +1576,7 @@ const exportToPDF = () => {
               </div>
               <div className="grid grid-cols-2 gap-4 items-start">
                 <div className="space-y-1">
-                  <label className="text-xs text-gray-400 uppercase font-bold">Monto</label>
+                  <label className="text-sm text-gray-400 uppercase font-bold">Monto</label>
                   <input 
                     type="number"
                     value={amount}
@@ -1547,7 +1593,7 @@ const exportToPDF = () => {
                 </div>
                 
                 <div className="space-y-1">
-                  <label className="text-xs text-gray-400 uppercase font-bold">Categoría</label>
+                  <label className="text-sm text-gray-400 uppercase font-bold">Categoría</label>
                   <select 
                     value={category}
                     onChange={(e) => setCategory(e.target.value as Category)}
@@ -1567,7 +1613,7 @@ const exportToPDF = () => {
 
   {/* FRECUENCIA */}
   <div className="space-y-1">
-    <label className="text-xs text-gray-400 uppercase font-bold">Frecuencia</label>
+    <label className="text-sm text-gray-400 uppercase font-bold">Frecuencia</label>
     <select 
       value={frequency}
       onChange={(e) => setFrequency(e.target.value as "once" | "monthly")}
@@ -1584,7 +1630,7 @@ const exportToPDF = () => {
 
   {/* FECHA DEL GASTO */}
 <div className="space-y-1">
-  <label className="text-xs text-gray-400 uppercase font-bold">
+  <label className="text-sm text-gray-400 uppercase font-bold">
     Fecha del gasto
   </label>
 
@@ -1602,7 +1648,7 @@ const exportToPDF = () => {
 
 {/* FECHA LÍMITE */}
 <div className="space-y-1">
-  <label className="text-xs text-gray-400 uppercase font-bold">
+  <label className="text-sm text-gray-400 uppercase font-bold">
     Fecha límite de pago
   </label>
 
@@ -1624,7 +1670,7 @@ const exportToPDF = () => {
     checked={isPaid}
     onChange={(e) => setIsPaid(e.target.checked)}
   />
-  <label className="text-xs text-gray-400">
+  <label className="text-sm text-gray-400">
     Ya pagué este gasto
   </label>
 </div>
@@ -1657,36 +1703,43 @@ const exportToPDF = () => {
               <h3 className="text-sm font-bold text-gray-400 uppercase mb-4 flex items-center gap-2">
                 <PieChartIcon className="w-4 h-4" /> Distribución
               </h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-  <Pie
-    data={categoryData}
-    cx="50%"
-    cy="50%"
-    innerRadius={50}
-    outerRadius={90}
-    paddingAngle={3}
-    dataKey="value"
-  >
-    {categoryData.map((entry, index) => (
-      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-    ))}
-  </Pie>
+              <div className="w-full h-[300px]">
+  <ResponsiveContainer width="100%" height="100%">
+    
+    <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+      <Pie
+        data={categoryData}
+        cx="50%"
+        cy="50%"
+        innerRadius={50}
+        outerRadius={90}
+        paddingAngle={3}
+        dataKey="value"
+      >
+        {categoryData.map((entry, index) => (
+          <Cell
+            key={`cell-${index}`}
+            fill={COLORS[index % COLORS.length]}
+          />
+        ))}
+      </Pie>
 
-  <Tooltip
-    formatter={(value: number, name: string) => [
-      `$${value.toLocaleString("es-ES")}`,
-      name
-    ]}
-    contentStyle={{
-      backgroundColor: "#0f172a",
-      border: "1px solid #1e293b",
-      borderRadius: "10px"
-    }}
-    itemStyle={{ color: "#fff" }}
-  />
-</PieChart>
-              </ResponsiveContainer>
+      <Tooltip
+        formatter={(value: number, name: string) => [
+          `$${value.toLocaleString("es-ES")}`,
+          name
+        ]}
+        contentStyle={{
+          backgroundColor: "#0f172a",
+          border: "1px solid #1e293b",
+          borderRadius: "10px"
+        }}
+        itemStyle={{ color: "#fff" }}
+      />
+    </PieChart>
+
+  </ResponsiveContainer>
+</div>
             </motion.div>
 
             <motion.div 
@@ -1813,7 +1866,7 @@ labelStyle={{ color: theme === "dark" ? "#fff" : "#000" }}
 
       {/* 🔹 DISTRIBUCIÓN DE GASTOS */}
       <div>
-        <p className="text-xs uppercase text-gray-400 font-bold mb-2">
+        <p className="text-sm uppercase text-gray-400 font-bold mb-2">
           Distribución de gastos fijos
         </p>
         
@@ -1829,10 +1882,10 @@ labelStyle={{ color: theme === "dark" ? "#fff" : "#000" }}
               <p className="font-bold">
                 Día {item.incomeDay}
               </p>
-              <p className="text-xs text-gray-400">
+              <p className="text-sm text-gray-400">
                 {item.expense}
               </p>
-              <p className="text-[10px] text-blue-400">
+              <p className="text-sm text-blue-400">
   {item.coveredBy}
 </p>
             </div>
@@ -1847,7 +1900,7 @@ labelStyle={{ color: theme === "dark" ? "#fff" : "#000" }}
       {/* 🔹 BALANCE POR QUINCENA */}
       {quincenaAnalysis && (
         <div>
-          <p className="text-xs uppercase text-gray-400 font-bold mb-2">
+          <p className="text-sm uppercase text-gray-400 font-bold mb-2">
             Estado por quincena
           </p>
 
@@ -1856,7 +1909,7 @@ labelStyle={{ color: theme === "dark" ? "#fff" : "#000" }}
             <div className={`p-3 rounded-xl ${
               theme === "dark" ? "bg-white/5" : "bg-gray-100"
             }`}>
-              <p className="text-xs text-gray-400">Primera quincena</p>
+              <p className="text-sm text-gray-400">Primera quincena</p>
               <p className={`font-bold ${
                 quincenaAnalysis.firstBalance >= 0
                   ? "text-emerald-400"
@@ -1869,7 +1922,7 @@ labelStyle={{ color: theme === "dark" ? "#fff" : "#000" }}
             <div className={`p-3 rounded-xl ${
               theme === "dark" ? "bg-white/5" : "bg-gray-100"
             }`}>
-              <p className="text-xs text-gray-400">Segunda quincena</p>
+              <p className="text-sm text-gray-400">Segunda quincena</p>
               <p className={`font-bold ${
                 quincenaAnalysis.secondBalance >= 0
                   ? "text-emerald-400"
@@ -1917,7 +1970,7 @@ labelStyle={{ color: theme === "dark" ? "#fff" : "#000" }}
     💸 Te faltan ${cashflowAlert.deficit.toLocaleString("es-ES")} <br />
 
     💡 Recomendación:
-    <ul className="mt-2 list-disc ml-4 text-xs">
+    <ul className="mt-2 list-disc ml-4 text-sm">
       <li>Reduce gastos variables</li>
       <li>O mueve gastos a después del día {cashflowAlert.day}</li>
       <li>O agrega un ingreso extra antes de esa fecha</li>
@@ -2002,23 +2055,23 @@ labelStyle={{ color: theme === "dark" ? "#fff" : "#000" }}
               <div className="flex items-center gap-2">
   <button
     onClick={exportToExcel}
-    className="text-xs px-3 py-2 bg-green-500/20 text-green-400 rounded-lg"
+    className="text-sm px-3 py-2 bg-green-500/20 text-green-400 rounded-lg"
   >
     Excel
   </button>
 
   <button
     onClick={exportToPDF}
-    className="text-xs px-3 py-2 bg-red-500/20 text-red-400 rounded-lg"
+    className="text-sm px-3 py-2 bg-red-500/20 text-red-400 rounded-lg"
   >
     PDF
   </button>
 </div>
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-xl">
               <table className="w-full text-left">
                 <thead>
-                  <tr className="text-xs text-gray-400 uppercase bg-white/5">
+                  <tr className="text-sm text-gray-400 uppercase bg-white/5">
                     <th className="px-6 py-4">Fecha</th>
                     <th className="px-6 py-4">Descripción</th>
                     <th className="px-6 py-4">Categoría</th>
@@ -2064,7 +2117,7 @@ return format(d, "dd MMM", { locale: es });
       </td>
 
       <td className="px-6 py-4">
-        <span className="text-xs px-2 py-1 rounded-full bg-white/5 border border-white/10">
+        <span className="text-sm px-2 py-1 rounded-full bg-white/5 border border-white/10">
           {exp.category}
         </span>
       </td>
@@ -2082,14 +2135,14 @@ return format(d, "dd MMM", { locale: es });
         {!exp.paid_date && !exp.is_paid && (
           <button
             onClick={() => markAsPaid(exp)}
-            className="text-emerald-400 text-xs mr-3 hover:underline"
+            className="text-emerald-400 text-sm mr-3 hover:underline"
           >
             Pagar
           </button>
         )}
 
         {(exp.paid_date || exp.is_paid) && (
-          <span className="text-emerald-400 text-xs mr-3">
+          <span className="text-emerald-400 text-sm mr-3">
             ✅ Pagado
           </span>
         )}
@@ -2112,6 +2165,7 @@ return format(d, "dd MMM", { locale: es });
               </table>
             </div>
           </motion.div>
+        </div>
         </div>
       </main>
     </div>
