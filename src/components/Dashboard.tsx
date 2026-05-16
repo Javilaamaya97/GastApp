@@ -39,7 +39,7 @@ import { Income } from "../types";
 import { useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { signOut } from "../services/authService";
-import { getProfile } from "../services/profileService";
+import { getProfile, upgradeToPremium } from "../services/profileService";
 
 interface DashboardProps {
   onLogout: () => void;
@@ -1245,10 +1245,19 @@ const exportToPDF = () => {
     </p>
 
     <button
-      className="mt-4 bg-amber-500 hover:bg-amber-400 text-black font-bold px-5 py-2 rounded-xl transition-all"
-    >
-      Mejorar a Premium
-    </button>
+  onClick={async () => {
+
+    await upgradeToPremium();
+
+    const updatedProfile = await getProfile();
+
+    setProfile(updatedProfile);
+
+  }}
+  className="mt-4 bg-amber-500 hover:bg-amber-400 text-black font-bold px-5 py-2 rounded-xl transition-all"
+>
+  Mejorar a Premium
+</button>
 
   </div>
 
